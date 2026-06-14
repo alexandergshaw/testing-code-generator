@@ -2,6 +2,7 @@
 const Koa = require("koa");
 const Router = require("@koa/router");
 const bodyParser = require("koa-bodyparser");
+const repo = require("./repo");
 [% if auth == "jwt" %]
 const crypto = require("crypto");
 [% endif %]
@@ -20,11 +21,6 @@ app.use(async (ctx, next) => {
   await next();
 });
 app.use(bodyParser());
-
-[% for entity in entities %]
-let [[ entity.plural ]] = [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]];
-let [[ entity.var ]]Seq = [% if is_default_schema %]2[% else %]0[% endif %];
-[% endfor %]
 
 router.get("/api/health", (ctx) => {
   ctx.body = { status: "ok" };
@@ -86,20 +82,18 @@ router.get("/api/me", (ctx) => {
 [% for entity in entities %]
 
 // ---- [[ entity.class_name ]] ----
-router.get("[[ entity.route ]]", (ctx) => {
-  ctx.body = [[ entity.plural ]];
+router.get("[[ entity.route ]]", async (ctx) => {
+  ctx.body = await repo.list("[[ entity.plural ]]");
 });
 
-router.post("[[ entity.route ]]", (ctx) => {
-  const body = ctx.request.body || {};
-  const item = { id: ++[[ entity.var ]]Seq[% for f in entity.fields %], [[ f.name ]]: body["[[ f.name ]]"][% endfor %] };
-  [[ entity.plural ]].push(item);
+router.post("[[ entity.route ]]", async (ctx) => {
+  const item = await repo.create("[[ entity.plural ]]", ctx.request.body || {});
   ctx.status = 201;
   ctx.body = item;
 });
 
-router.get("[[ entity.route ]]/:id", (ctx) => {
-  const item = [[ entity.plural ]].find((x) => x.id === Number(ctx.params.id));
+router.get("[[ entity.route ]]/:id", async (ctx) => {
+  const item = await repo.get("[[ entity.plural ]]", ctx.params.id);
   if (!item) {
     ctx.status = 404;
     ctx.body = { error: "not found" };
@@ -108,24 +102,19 @@ router.get("[[ entity.route ]]/:id", (ctx) => {
   ctx.body = item;
 });
 
-router.put("[[ entity.route ]]/:id", (ctx) => {
-  const item = [[ entity.plural ]].find((x) => x.id === Number(ctx.params.id));
+router.put("[[ entity.route ]]/:id", async (ctx) => {
+  const item = await repo.update("[[ entity.plural ]]", ctx.params.id, ctx.request.body || {});
   if (!item) {
     ctx.status = 404;
     ctx.body = { error: "not found" };
     return;
   }
-  const body = ctx.request.body || {};
-[% for f in entity.fields %]
-  if ("[[ f.name ]]" in body) item.[[ f.name ]] = body["[[ f.name ]]"];
-[% endfor %]
   ctx.body = item;
 });
 
-router.delete("[[ entity.route ]]/:id", (ctx) => {
-  const before = [[ entity.plural ]].length;
-  [[ entity.plural ]] = [[ entity.plural ]].filter((x) => x.id !== Number(ctx.params.id));
-  if ([[ entity.plural ]].length === before) {
+router.delete("[[ entity.route ]]/:id", async (ctx) => {
+  const ok = await repo.remove("[[ entity.plural ]]", ctx.params.id);
+  if (!ok) {
     ctx.status = 404;
     ctx.body = { error: "not found" };
     return;

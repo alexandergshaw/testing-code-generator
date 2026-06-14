@@ -1,15 +1,11 @@
 // [[ project_name ]] — Express JSON API
 const express = require("express");
 const cors = require("cors");
+const repo = require("./repo");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-[% for entity in entities %]
-let [[ entity.plural ]] = [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]];
-let [[ entity.var ]]Seq = [% if is_default_schema %]2[% else %]0[% endif %];
-[% endfor %]
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 [% if auth == "jwt" %]
@@ -61,37 +57,30 @@ app.get("/api/me", (req, res) => {
 [% for entity in entities %]
 
 // ---- [[ entity.class_name ]] ----
-app.get("[[ entity.route ]]", (req, res) => res.json([[ entity.plural ]]));
+app.get("[[ entity.route ]]", async (req, res) => {
+  res.json(await repo.list("[[ entity.plural ]]"));
+});
 
-app.post("[[ entity.route ]]", (req, res) => {
-  const body = req.body || {};
-  const item = { id: ++[[ entity.var ]]Seq[% for f in entity.fields %], [[ f.name ]]: body["[[ f.name ]]"][% endfor %] };
-  [[ entity.plural ]].push(item);
+app.post("[[ entity.route ]]", async (req, res) => {
+  const item = await repo.create("[[ entity.plural ]]", req.body || {});
   res.status(201).json(item);
 });
 
-app.get("[[ entity.route ]]/:id", (req, res) => {
-  const item = [[ entity.plural ]].find((x) => x.id === Number(req.params.id));
+app.get("[[ entity.route ]]/:id", async (req, res) => {
+  const item = await repo.get("[[ entity.plural ]]", req.params.id);
   if (!item) return res.status(404).json({ error: "not found" });
   res.json(item);
 });
 
-app.put("[[ entity.route ]]/:id", (req, res) => {
-  const item = [[ entity.plural ]].find((x) => x.id === Number(req.params.id));
+app.put("[[ entity.route ]]/:id", async (req, res) => {
+  const item = await repo.update("[[ entity.plural ]]", req.params.id, req.body || {});
   if (!item) return res.status(404).json({ error: "not found" });
-  const body = req.body || {};
-[% for f in entity.fields %]
-  if ("[[ f.name ]]" in body) item.[[ f.name ]] = body["[[ f.name ]]"];
-[% endfor %]
   res.json(item);
 });
 
-app.delete("[[ entity.route ]]/:id", (req, res) => {
-  const before = [[ entity.plural ]].length;
-  [[ entity.plural ]] = [[ entity.plural ]].filter((x) => x.id !== Number(req.params.id));
-  if ([[ entity.plural ]].length === before) {
-    return res.status(404).json({ error: "not found" });
-  }
+app.delete("[[ entity.route ]]/:id", async (req, res) => {
+  const ok = await repo.remove("[[ entity.plural ]]", req.params.id);
+  if (!ok) return res.status(404).json({ error: "not found" });
   res.status(204).end();
 });
 [% endfor %]

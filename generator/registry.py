@@ -153,6 +153,20 @@ _BACKENDS = [
                                  "dev": "node --watch server.js"}},
     ),
     Module(
+        id="nestjs",
+        label="NestJS",
+        axis="backend",
+        summary="Node.js / NestJS (TypeScript) JSON API (in-memory store).",
+        src="backend/nestjs",
+        npm=(("@nestjs/common", "^10.4.0"), ("@nestjs/core", "^10.4.0"),
+             ("@nestjs/platform-express", "^10.4.0"),
+             ("reflect-metadata", "^0.2.2"), ("rxjs", "^7.8.1")),
+        npm_dev=(("typescript", "^5.4.0"), ("@types/node", "^20.14.0")),
+        context={"run": ["npm install", "npm run build", "npm start"],
+                 "lang": "node",
+                 "npm_scripts": {"build": "tsc", "start": "node dist/main.js"}},
+    ),
+    Module(
         id="nethttp",
         label="Go (net/http)",
         axis="backend",
@@ -302,6 +316,7 @@ _FRONTENDS = [
 _DATABASES = [
     Module(id="none", label="No database", axis="database",
            summary="In-memory sample data.",
+           src="database/memory",
            provides=frozenset({"in-memory"})),
     Module(
         id="sqlite",
@@ -327,6 +342,17 @@ _DATABASES = [
         requires_msg="A database needs a Python backend (Flask or FastAPI).",
         context={"db_url": "postgresql+psycopg2://postgres:postgres@localhost:5432/app",
                  "db_driver": "postgres"},
+    ),
+    Module(
+        id="drizzle-sqlite",
+        label="Drizzle + SQLite",
+        axis="database",
+        summary="SQLite via Drizzle ORM (Node, better-sqlite3).",
+        src="database/drizzle",
+        npm=(("drizzle-orm", "^0.36.0"), ("better-sqlite3", "^11.0.0")),
+        provides=frozenset({"has-db", "engine:sqlite", "db:drizzle"}),
+        requires=("lang:node",),
+        requires_msg="Drizzle needs a Node backend.",
     ),
 ]
 

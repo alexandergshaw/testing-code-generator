@@ -1,0 +1,26 @@
+// Drizzle ORM schema (SQLite) — one table per entity.
+const { sqliteTable, integer, real, text } = require("drizzle-orm/sqlite-core");
+
+[% for entity in entities %]
+const [[ entity.var ]] = sqliteTable("[[ entity.table ]]", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+[% for f in entity.fields %]
+  [[ f.name ]]: [% if f.type == "boolean" %]integer("[[ f.name ]]", { mode: "boolean" })[% elif f.type == "integer" %]integer("[[ f.name ]]")[% elif f.type == "float" %]real("[[ f.name ]]")[% else %]text("[[ f.name ]]")[% endif %],
+[% endfor %]
+});
+[% endfor %]
+
+// table lookup + column allow-lists, keyed by the API plural.
+const tables = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [[ entity.var ]],
+[% endfor %]
+};
+
+const columns = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [ [% for f in entity.fields %]"[[ f.name ]]"[% if not loop.last %], [% endif %][% endfor %]],
+[% endfor %]
+};
+
+module.exports = { tables, columns };

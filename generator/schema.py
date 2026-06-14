@@ -22,13 +22,14 @@ from .errors import InvalidSelection
 #   py    : Python / pydantic annotation
 #   ts    : JSON/JS value kind (informational)
 #   input : HTML input type for the generated form
+#   ddl   : SQLite column type for raw CREATE TABLE (Drizzle / better-sqlite3)
 FIELD_TYPES = {
-    "string":   {"sa": "String(255)", "py": "str",      "go": "string",  "ts": "string",  "input": "text"},
-    "text":     {"sa": "Text",        "py": "str",      "go": "string",  "ts": "string",  "input": "textarea"},
-    "integer":  {"sa": "Integer",     "py": "int",      "go": "int",     "ts": "number",  "input": "number"},
-    "float":    {"sa": "Float",       "py": "float",    "go": "float64", "ts": "number",  "input": "number"},
-    "boolean":  {"sa": "Boolean",     "py": "bool",     "go": "bool",    "ts": "boolean", "input": "checkbox"},
-    "datetime": {"sa": "DateTime",    "py": "datetime", "go": "string",  "ts": "string",  "input": "datetime-local"},
+    "string":   {"sa": "String(255)", "py": "str",      "go": "string",  "ts": "string",  "input": "text",          "ddl": "TEXT"},
+    "text":     {"sa": "Text",        "py": "str",      "go": "string",  "ts": "string",  "input": "textarea",      "ddl": "TEXT"},
+    "integer":  {"sa": "Integer",     "py": "int",      "go": "int",     "ts": "number",  "input": "number",        "ddl": "INTEGER"},
+    "float":    {"sa": "Float",       "py": "float",    "go": "float64", "ts": "number",  "input": "number",        "ddl": "REAL"},
+    "boolean":  {"sa": "Boolean",     "py": "bool",     "go": "bool",    "ts": "boolean", "input": "checkbox",      "ddl": "INTEGER"},
+    "datetime": {"sa": "DateTime",    "py": "datetime", "go": "string",  "ts": "string",  "input": "datetime-local", "ddl": "TEXT"},
 }
 
 DEFAULT_SCHEMA = [
@@ -71,6 +72,10 @@ class Field:
     @property
     def go(self) -> str:
         return FIELD_TYPES[self.type]["go"]
+
+    @property
+    def ddl(self) -> str:
+        return FIELD_TYPES[self.type]["ddl"]
 
     @property
     def pascal(self) -> str:

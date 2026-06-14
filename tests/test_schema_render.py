@@ -73,18 +73,24 @@ def test_express_custom_schema_renders(frontend, tmp_path):
     tree = compose(selection, "Shop", schema=SCHEMA)
     server_bytes = next(tree[p] for p in tree if p.endswith("server.js"))
     server = server_bytes.decode()
+    # Routes live in the backend; the in-memory store lives in repo.js.
     for entity in ("products", "customers"):
         assert f"/api/{entity}" in server
-        assert f"let {entity}" in server
+        assert f'repo.list("{entity}")' in server
+    repo_bytes = next(tree[p] for p in tree if p.endswith("repo.js"))
+    repo = repo_bytes.decode()
+    for entity in ("products", "customers"):
+        assert f"{entity}:" in repo  # store keyed by plural
 
     node = shutil.which("node")
     if node:
-        path = tmp_path / "server.js"
-        path.write_bytes(server_bytes)
-        result = subprocess.run(
-            [node, "--check", str(path)], capture_output=True, text=True
-        )
-        assert result.returncode == 0, result.stderr
+        for name, blob in (("server.js", server_bytes), ("repo.js", repo_bytes)):
+            path = tmp_path / name
+            path.write_bytes(blob)
+            result = subprocess.run(
+                [node, "--check", str(path)], capture_output=True, text=True
+            )
+            assert result.returncode == 0, result.stderr
 
 
 def test_go_custom_schema_builds(tmp_path):

@@ -1,0 +1,116 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  NotFoundException,
+  Param,
+  Post,
+  Put,
+[% if auth == "jwt" %]
+  BadRequestException,
+  Headers,
+  UnauthorizedException,
+[% endif %]
+} from "@nestjs/common";
+
+// The data layer (in-memory or Drizzle) lives at the project root as repo.js.
+const repo = require("../repo");
+[% if auth == "jwt" %]
+import * as crypto from "crypto";
+
+const JWT_SECRET = "dev-secret-change-me"; // override via env in production
+
+function b64url(value: string | Buffer): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+function makeToken(sub: string): string {
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64url(JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600 }));
+  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  return `${header}.${payload}.${sig}`;
+}
+
+function verifyToken(token: string): any {
+  const parts = (token || "").split(".");
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  if (sig !== expected) return null;
+  let claims: any;
+  try {
+    claims = JSON.parse(Buffer.from(payload, "base64url").toString());
+  } catch {
+    return null;
+  }
+  if ((claims.exp || 0) < Math.floor(Date.now() / 1000)) return null;
+  return claims;
+}
+[% endif %]
+
+@Controller("api/health")
+export class HealthController {
+  @Get()
+  health() {
+    return { status: "ok" };
+  }
+}
+[% if auth == "jwt" %]
+
+@Controller("api")
+export class AuthController {
+  @Post("login")
+  @HttpCode(200)
+  login(@Body() body: any) {
+    const username = (body?.username ? String(body.username) : "").trim();
+    if (!username) throw new BadRequestException("username required");
+    return { token: makeToken(username) };
+  }
+
+  @Get("me")
+  me(@Headers("authorization") authorization: string) {
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+    const claims = verifyToken(token);
+    if (!claims) throw new UnauthorizedException();
+    return claims;
+  }
+}
+[% endif %]
+[% for entity in entities %]
+
+@Controller("api/[[ entity.plural ]]")
+export class [[ entity.class_name ]]Controller {
+  @Get()
+  async list() {
+    return repo.list("[[ entity.plural ]]");
+  }
+
+  @Post()
+  async create(@Body() body: any) {
+    return repo.create("[[ entity.plural ]]", body);
+  }
+
+  @Get(":id")
+  async get(@Param("id") id: string) {
+    const item = await repo.get("[[ entity.plural ]]", id);
+    if (!item) throw new NotFoundException();
+    return item;
+  }
+
+  @Put(":id")
+  async update(@Param("id") id: string, @Body() body: any) {
+    const item = await repo.update("[[ entity.plural ]]", id, body);
+    if (!item) throw new NotFoundException();
+    return item;
+  }
+
+  @Delete(":id")
+  @HttpCode(204)
+  async remove(@Param("id") id: string) {
+    const ok = await repo.remove("[[ entity.plural ]]", id);
+    if (!ok) throw new NotFoundException();
+  }
+}
+[% endfor %]

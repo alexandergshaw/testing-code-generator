@@ -1,0 +1,24 @@
+import { Module } from "@nestjs/common";
+
+import {
+  HealthController,
+[% if auth == "jwt" %]
+  AuthController,
+[% endif %]
+[% for entity in entities %]
+  [[ entity.class_name ]]Controller,
+[% endfor %]
+} from "./app.controllers";
+
+@Module({
+  controllers: [
+    HealthController,
+[% if auth == "jwt" %]
+    AuthController,
+[% endif %]
+[% for entity in entities %]
+    [[ entity.class_name ]]Controller,
+[% endfor %]
+  ],
+})
+export class AppModule {}

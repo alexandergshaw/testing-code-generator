@@ -1,0 +1,44 @@
+[% if node_backend %]
+// In-memory data store (no database selected). The backend talks to this repo
+// through the same async API a real database layer (e.g. Drizzle) implements,
+// so swapping the data layer never touches the route handlers.
+const stores = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]],
+[% endfor %]
+};
+const seqs = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [% if is_default_schema %]2[% else %]0[% endif %],
+[% endfor %]
+};
+
+module.exports = {
+  async list(table) {
+    return stores[table];
+  },
+  async create(table, data) {
+    const item = { ...data, id: ++seqs[table] };
+    stores[table].push(item);
+    return item;
+  },
+  async get(table, id) {
+    return stores[table].find((x) => x.id === Number(id)) || null;
+  },
+  async update(table, id, data) {
+    const item = stores[table].find((x) => x.id === Number(id));
+    if (!item) return null;
+    for (const [key, value] of Object.entries(data)) {
+      if (key !== "id") item[key] = value;
+    }
+    return item;
+  },
+  async remove(table, id) {
+    const rows = stores[table];
+    const idx = rows.findIndex((x) => x.id === Number(id));
+    if (idx === -1) return false;
+    rows.splice(idx, 1);
+    return true;
+  },
+};
+[% endif %]

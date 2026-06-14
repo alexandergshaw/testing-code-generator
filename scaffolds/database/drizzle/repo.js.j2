@@ -1,0 +1,35 @@
+// Drizzle data layer — same async repo API the in-memory store implements,
+// so the backend route handlers are identical whichever data layer is chosen.
+const { eq } = require("drizzle-orm");
+const { db } = require("./db");
+const { tables, columns } = require("./schema");
+
+function clean(table, data) {
+  const out = {};
+  for (const col of columns[table]) {
+    if (col in data) out[col] = data[col];
+  }
+  return out;
+}
+
+module.exports = {
+  async list(table) {
+    return db.select().from(tables[table]).all();
+  },
+  async create(table, data) {
+    return db.insert(tables[table]).values(clean(table, data)).returning().get();
+  },
+  async get(table, id) {
+    return db.select().from(tables[table]).where(eq(tables[table].id, Number(id))).get() || null;
+  },
+  async update(table, id, data) {
+    const patch = clean(table, data);
+    if (Object.keys(patch).length > 0) {
+      db.update(tables[table]).set(patch).where(eq(tables[table].id, Number(id))).run();
+    }
+    return this.get(table, id);
+  },
+  async remove(table, id) {
+    return db.delete(tables[table]).where(eq(tables[table].id, Number(id))).run().changes > 0;
+  },
+};

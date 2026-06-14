@@ -1,0 +1,26 @@
+// SQLite connection + table creation (no migration step needed).
+const Database = require("better-sqlite3");
+const { drizzle } = require("drizzle-orm/better-sqlite3");
+
+const sqlite = new Database("app.db");
+sqlite.pragma("journal_mode = WAL");
+[% for entity in entities %]
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS [[ entity.table ]] (
+    id INTEGER PRIMARY KEY AUTOINCREMENT[% for f in entity.fields %],
+    [[ f.name ]] [[ f.ddl ]][% endfor %]
+  )
+`);
+[% endfor %]
+[% if is_default_schema %]
+
+// Seed sample rows on first run.
+if (sqlite.prepare("SELECT COUNT(*) AS n FROM items").get().n === 0) {
+  sqlite.prepare("INSERT INTO items (name) VALUES (?), (?)").run("First item", "Second item");
+}
+[% endif %]
+
+const db = drizzle(sqlite);
+
+module.exports = { db };
