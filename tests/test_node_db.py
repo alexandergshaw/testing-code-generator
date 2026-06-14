@@ -36,6 +36,40 @@ def test_drizzle_data_layer_rendered(backend):
     assert "better-sqlite3" in pkg["dependencies"]
 
 
+@pytest.mark.parametrize("backend", NODE_BACKENDS)
+def test_drizzle_postgres_data_layer_rendered(backend):
+    tree = compose(
+        {"backend": backend, "frontend": "none", "database": "drizzle-postgres",
+         "styling": "plain", "auth": "none", "api": "rest", "pkg": "npm"},
+        "Shop", schema=SCHEMA,
+    )
+    names = {p.split("/")[-1] for p in tree}
+    assert {"schema.js", "db.js", "repo.js"} <= names  # Drizzle data layer present
+    schema = next(tree[p] for p in tree if p.endswith("schema.js")).decode()
+    assert 'pgTable("products"' in schema
+    assert "doublePrecision" in schema   # float column mapped to pg type
+    db = next(tree[p] for p in tree if p.endswith("db.js")).decode()
+    assert "drizzle-orm/postgres-js" in db
+    assert "ready" in db                  # async setup gated behind a ready promise
+    import json
+    pkg = json.loads(next(tree[p] for p in tree if p.endswith("package.json")))
+    assert "drizzle-orm" in pkg["dependencies"]
+    assert "postgres" in pkg["dependencies"]
+    assert "better-sqlite3" not in pkg["dependencies"]  # not the SQLite driver
+
+
+def test_drizzle_postgres_docker_compose_has_db_service():
+    tree = compose(
+        {"backend": "express", "frontend": "none", "database": "drizzle-postgres",
+         "styling": "plain", "auth": "none", "api": "rest", "pkg": "npm"},
+        "Shop", schema=SCHEMA, addons=["docker"],
+    )
+    compose_yml = next(tree[p] for p in tree if p.endswith("docker-compose.yml")).decode()
+    assert "image: postgres:16" in compose_yml            # a Postgres service is added
+    assert "postgres://postgres:postgres@db:5432/app" in compose_yml  # node driver URL
+    assert "psycopg2" not in compose_yml                  # not the Python driver URL
+
+
 def test_in_memory_repo_when_no_db():
     tree = compose(
         {"backend": "express", "frontend": "none", "database": "none",
@@ -61,12 +95,13 @@ def test_drizzle_requires_node_backend():
 
 
 @pytest.mark.parametrize("backend", NODE_BACKENDS)
-def test_drizzle_js_syntax(backend, tmp_path):
+@pytest.mark.parametrize("database", ["drizzle-sqlite", "drizzle-postgres"])
+def test_drizzle_js_syntax(backend, database, tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
     tree = compose(
-        {"backend": backend, "frontend": "none", "database": "drizzle-sqlite",
+        {"backend": backend, "frontend": "none", "database": database,
          "styling": "plain", "auth": "jwt", "api": "rest", "pkg": "npm"},
         "Shop", schema=SCHEMA,
     )

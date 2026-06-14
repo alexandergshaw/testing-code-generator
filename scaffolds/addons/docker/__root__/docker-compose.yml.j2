@@ -4,9 +4,13 @@ services:
     build: [[ backend_build ]]
     ports:
       - "[[ backend_port ]]:[[ backend_port ]]"
-[% if database == "postgres" %]
+[% if database == "postgres" or database == "drizzle-postgres" %]
     environment:
+[% if backend_lang == "node" %]
+      DATABASE_URL: postgres://postgres:postgres@db:5432/app
+[% else %]
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/app
+[% endif %]
     depends_on:
       - db
 [% endif %]
@@ -17,7 +21,7 @@ services:
     ports:
       - "[[ frontend_port ]]:[% if spa %][[ frontend_port ]][% else %]80[% endif %]"
 [% endif %]
-[% if database == "postgres" %]
+[% if database == "postgres" or database == "drizzle-postgres" %]
   db:
     image: postgres:16
     environment:

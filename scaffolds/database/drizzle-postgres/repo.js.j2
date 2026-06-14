@@ -1,0 +1,46 @@
+// Drizzle (PostgreSQL / postgres-js) data layer — the same async repo API the
+// in-memory store implements, so the backend route handlers are identical
+// whichever data layer is chosen. postgres-js is fully async: queries resolve to
+// plain arrays (no .all()/.get()/.run()), and every method awaits `ready` first
+// so the table-creation step never races the first request.
+const { eq } = require("drizzle-orm");
+const { db, ready } = require("./db");
+const { tables, columns } = require("./schema");
+
+function clean(table, data) {
+  const out = {};
+  for (const col of columns[table]) {
+    if (col in data) out[col] = data[col];
+  }
+  return out;
+}
+
+module.exports = {
+  async list(table) {
+    await ready;
+    return db.select().from(tables[table]);
+  },
+  async create(table, data) {
+    await ready;
+    const [row] = await db.insert(tables[table]).values(clean(table, data)).returning();
+    return row;
+  },
+  async get(table, id) {
+    await ready;
+    const [row] = await db.select().from(tables[table]).where(eq(tables[table].id, Number(id)));
+    return row || null;
+  },
+  async update(table, id, data) {
+    await ready;
+    const patch = clean(table, data);
+    if (Object.keys(patch).length > 0) {
+      await db.update(tables[table]).set(patch).where(eq(tables[table].id, Number(id)));
+    }
+    return this.get(table, id);
+  },
+  async remove(table, id) {
+    await ready;
+    const rows = await db.delete(tables[table]).where(eq(tables[table].id, Number(id))).returning({ id: tables[table].id });
+    return rows.length > 0;
+  },
+};

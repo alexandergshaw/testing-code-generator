@@ -354,6 +354,18 @@ _DATABASES = [
         requires=("lang:node",),
         requires_msg="Drizzle needs a Node backend.",
     ),
+    Module(
+        id="drizzle-postgres",
+        label="Drizzle + PostgreSQL",
+        axis="database",
+        summary="PostgreSQL via Drizzle ORM (Node, postgres-js; set DATABASE_URL).",
+        src="database/drizzle-postgres",
+        npm=(("drizzle-orm", "^0.36.0"), ("postgres", "^3.4.0")),
+        provides=frozenset({"has-db", "engine:postgres", "db:drizzle"}),
+        requires=("lang:node",),
+        requires_msg="Drizzle needs a Node backend.",
+        context={"db_url": "postgres://postgres:postgres@localhost:5432/app"},
+    ),
 ]
 
 

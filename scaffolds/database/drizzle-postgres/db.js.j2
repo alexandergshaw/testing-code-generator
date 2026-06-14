@@ -1,0 +1,28 @@
+// PostgreSQL connection + table creation (no migration step needed).
+const postgres = require("postgres");
+const { drizzle } = require("drizzle-orm/postgres-js");
+
+const client = postgres(process.env.DATABASE_URL || "[[ db_url ]]");
+const db = drizzle(client);
+
+// Create tables on first run (and seed the demo rows). `ready` resolves once the
+// schema exists; the repo awaits it before every query, so the async setup never
+// races the first request and the route handlers stay untouched.
+const ready = (async () => {
+[% for entity in entities %]
+  await client`
+    CREATE TABLE IF NOT EXISTS [[ entity.table ]] (
+      id SERIAL PRIMARY KEY[% for f in entity.fields %],
+      [[ f.name ]] [% if f.type == "boolean" %]BOOLEAN[% elif f.type == "integer" %]INTEGER[% elif f.type == "float" %]DOUBLE PRECISION[% else %]TEXT[% endif %][% endfor %]
+    )
+  `;
+[% endfor %]
+[% if is_default_schema %]
+  const [{ n }] = await client`SELECT COUNT(*)::int AS n FROM items`;
+  if (n === 0) {
+    await client`INSERT INTO items (name) VALUES ('First item'), ('Second item')`;
+  }
+[% endif %]
+})();
+
+module.exports = { db, ready };

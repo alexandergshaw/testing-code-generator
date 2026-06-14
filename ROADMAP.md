@@ -5,10 +5,14 @@ is the work queue + copy-paste recipes. Goal of the project: be *exhaustive* acr
 axes/options and languages, while **every generated combo actually runs**.
 
 ## Status snapshot
-- 7 axes, all tag-driven. 14 backends / 4 languages, 7 frontends. ~214 tests pass
+- 7 axes, all tag-driven. 14 backends / 4 languages, 7 frontends. ~223 tests pass
   (1 skipped = Ruby `ruby -c`, no local toolchain). Pairwise keeps the suite ~10s.
-- Node DB just landed via the **repo seam** (Drizzle+SQLite). Backends are
-  data-layer-agnostic, so new ORMs are now a `repo.js` drop-in, not per-backend edits.
+- Node DB via the **repo seam**: Drizzle+SQLite **and** Drizzle+Postgres landed.
+  Backends are data-layer-agnostic, so new ORMs are a `repo.js` drop-in, not
+  per-backend edits. Postgres uses async postgres-js: `db.js` exposes a `ready`
+  promise (table create + seed) that `repo.js` awaits per call, so async setup
+  never races the first request without touching handlers. Docker addon now spins
+  up a `postgres:16` service for `drizzle-postgres` too (driver-aware DATABASE_URL).
 
 ## Objectives (priority order)
 
@@ -16,10 +20,13 @@ axes/options and languages, while **every generated combo actually runs**.
 Backends already call the async `repo` API, so each new option is just a new data
 module under `scaffolds/database/<id>/` (schema/db/repo) + a registry entry. No
 backend edits. Follow the `database/drizzle` precedent.
-- **Drizzle + Postgres** (`drizzle-postgres`): `pg-core` tables + `postgres` (postgres-js,
-  async) connection + async repo (`await db...`, no `.all()/.get()/.run()`). Code is
-  straightforward; live test needs a Postgres server (treat like Python `postgres` —
-  render + `node --check` here, live in CI).
+- **Drizzle + Postgres** (`drizzle-postgres`) — ✅ DONE. `scaffolds/database/drizzle-postgres/`
+  (pg-core schema + postgres-js `db.js` with a `ready` promise + async `repo.js`).
+  Registered with `engine:postgres`/`db:drizzle`/`lang:node` + `db_url` context;
+  docker-compose generalized to add a Postgres service for it. Tests in
+  `tests/test_node_db.py` (render + `node --check` both schema branches + compose).
+  Verified render + syntax here; live Postgres run is CI-only. **Use this as the
+  precedent for the async-driver ORMs below (Mongo/MySQL/Prisma).**
 - **Prisma** (`prisma-postgres`/`prisma-sqlite`): ships `schema.prisma` (generated from
   entities) + a repo using `@prisma/client`. Note: needs `prisma generate` in the run
   steps (`context["run"]`) — it downloads a query-engine binary, so it's *not* offline;

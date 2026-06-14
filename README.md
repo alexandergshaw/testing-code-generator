@@ -45,7 +45,7 @@ vercel dev      # run the serverless setup locally
 | --------- | -------------------------------------------------- |
 | Backend   | Python: Flask, FastAPI, Litestar, Starlette · Node: Express, Fastify, Hono, Koa, NestJS · Go: net/http, Gin, Chi, Echo · Ruby: Sinatra · None |
 | Frontend  | Vanilla JS, React, Vue, Svelte, Preact, SolidJS, Lit (Vite), None |
-| Database  | None (in-memory) · Python: SQLite/PostgreSQL (SQLAlchemy) · Node: Drizzle + SQLite |
+| Database  | None (in-memory) · Python: SQLite/PostgreSQL (SQLAlchemy) · Node: Drizzle + SQLite/PostgreSQL |
 | Styling   | Plain CSS, Bootstrap (CDN), Tailwind (Play CDN)    |
 | Auth      | None, JWT (stateless HS256: `/api/login` + `/api/me`) |
 | API style | REST, GraphQL (Strawberry `/graphql`, Python + in-memory) |
