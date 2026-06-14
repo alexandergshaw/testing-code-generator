@@ -48,33 +48,55 @@ vercel dev      # run the serverless setup locally
 | Database  | None, SQLite, PostgreSQL (Python backends only)    |
 | Styling   | Plain CSS, Bootstrap (CDN), Tailwind (Play CDN)    |
 
-Every generated project is a tiny "items" demo: the backend exposes a JSON API
-(`/api/health`, `GET`/`POST /api/items`); the frontend lists items and adds new
-ones, calling the backend when present or using mock data when not. With a
-backend **and** a frontend you get a `backend/` + `frontend/` layout; otherwise
-the single component sits at the project root. Each zip includes a `README.md`
-with run instructions for the exact stack chosen.
+With a backend **and** a frontend you get a `backend/` + `frontend/` layout;
+otherwise the single component sits at the project root. Each zip includes a
+`README.md` with run instructions and a `stackgen.json` recording the exact
+configuration. Incompatible combinations (e.g. a database with no backend) are
+blocked both in the browser and on the server from one shared rule set.
 
-Incompatible combinations (e.g. a database with no backend) are blocked both in
-the browser and on the server from one shared rule set.
+## Customize
+
+Beyond the four axes, you can tailor the generated app deterministically — no
+LLMs involved:
+
+- **Data model.** Define your own entities and typed fields (string, text,
+  integer, float, boolean, datetime) in the form. The generator emits SQLAlchemy
+  models, full CRUD endpoints, and a list/create/delete UI per entity by looping
+  templates over your schema. Leave it empty for a sample `Item`. *Custom
+  entities require a Python backend (Flask or FastAPI).*
+- **Add-ons.** Multi-select extras layered into the build: **Docker**
+  (Dockerfiles + Compose, with a Postgres service when selected), **Tests**
+  (pytest against the API), **CI** (GitHub Actions), **Lint** (Ruff / Prettier),
+  **Env** (`.env.example`), and **MIT License**. Add-ons that don't fit the
+  chosen stack are hidden in the UI and dropped server-side.
+- **Presets.** *Save config* downloads the selection as `stackgen.json`,
+  *Copy share link* encodes it into a `?c=…` URL, and *Import config* reloads a
+  saved file. Every zip also contains its own `stackgen.json`, so a build is
+  reproducible. For scripting, `POST /api/generate` takes a config JSON body and
+  streams back the zip.
 
 ## How it works
 
 ```
-app.py                 Flask UI: GET / (form) + POST /generate (zip)
+app.py                 Flask UI: GET / (+?c= preset), POST /generate, POST /api/generate
 generator/
-  registry.py          Catalogue of options + compatibility rules
-  composer.py          Validate selection -> render -> merged file tree
+  registry.py          Catalogue of options, add-ons + compatibility rules
+  schema.py            Entity/field normalize, validate, type mapping
+  composer.py          Validate -> render (schema + add-ons) -> merged file tree
+  preset.py            Config serialize / encode / decode (mirrored in preset.js)
   project_env.py       Isolated Jinja env ([[ ]] delimiters) for scaffolds
   zipper.py            File tree -> in-memory zip
-scaffolds/             Source templates for the GENERATED apps
-templates/, static/    The generator's own UI
-tests/                 Composer + route tests
+  errors.py            Shared InvalidSelection
+scaffolds/             Source templates for the GENERATED apps (incl. addons/)
+templates/, public/    The generator's own UI (public/ = CDN-served assets)
+tests/                 Composer, schema, add-on, preset, and route tests
 ```
 
-Each stack option is a self-contained *module* (a folder under `scaffolds/` plus
-a registry entry). Adding an option later means adding one folder and one entry —
-no need to re-author every combination.
+Each stack option and add-on is a self-contained *module* (a folder under
+`scaffolds/` plus a registry entry). Add-on templates use the path tokens
+`__backend__` / `__frontend__` / `__root__` to land files in the right place, and
+files that render empty are skipped — so adding an option later means adding one
+folder and one entry, no re-authoring of combinations.
 
 ## Tests
 
@@ -84,5 +106,6 @@ pytest -q
 ```
 
 The suite renders **every valid stack combination**, compiles the generated
-Python, validates generated JSON, and checks that invalid combinations are
-rejected.
+Python, validates generated JSON, exercises custom-schema rendering, add-on
+placement/manifest folding, and preset round-trips, and checks that invalid
+combinations are rejected.

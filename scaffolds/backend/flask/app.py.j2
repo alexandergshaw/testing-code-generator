@@ -2,6 +2,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 [% if has_db %]
+
 from db import SessionLocal, init_db, [[ entities | map(attribute='class_name') | join(", ") ]]
 [% endif %]
 
