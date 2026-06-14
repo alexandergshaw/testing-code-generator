@@ -17,6 +17,8 @@ CONFIG = {
               "styling": "bootstrap", "auth": "none", "api": "rest", "pkg": "npm"},
     "addons": ["docker", "tests"],
     "schema": [{"name": "Product", "fields": [{"name": "title", "type": "string"}]}],
+    "structure": {"root": "shop", "layout": "monorepo",
+                  "files": [{"path": "docs/NOTES.md", "content": "hi"}]},
 }
 
 
@@ -27,8 +29,8 @@ def client():
 
 
 def test_to_from_config_round_trip():
-    name, selection, addons, schema = preset.from_config(CONFIG)
-    rebuilt = preset.to_config(name, selection, addons, schema)
+    name, selection, addons, schema, structure = preset.from_config(CONFIG)
+    rebuilt = preset.to_config(name, selection, addons, schema, structure)
     assert rebuilt == CONFIG
 
 

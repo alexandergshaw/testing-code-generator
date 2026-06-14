@@ -13,7 +13,7 @@ from .registry import AXES, CORE_AXES, axis_default
 CONFIG_VERSION = 1
 
 
-def to_config(project_name: str, selection: dict, addons, schema) -> dict:
+def to_config(project_name: str, selection: dict, addons, schema, structure=None) -> dict:
     """Build the canonical config dict for a generation request."""
     return {
         "version": CONFIG_VERSION,
@@ -21,12 +21,13 @@ def to_config(project_name: str, selection: dict, addons, schema) -> dict:
         "stack": {axis: selection.get(axis, axis_default(axis)) for axis in AXES},
         "addons": sorted(dict.fromkeys(addons)),
         "schema": list(schema),
+        "structure": structure or {},
     }
 
 
 def from_config(config: dict):
     """Validate a config dict and return ``(project_name, selection, addons,
-    schema)``. Raises ``InvalidSelection`` on a malformed config."""
+    schema, structure)``. Raises ``InvalidSelection`` on a malformed config."""
     if not isinstance(config, dict):
         raise InvalidSelection("Config must be a JSON object.")
     if config.get("version") != CONFIG_VERSION:
@@ -43,9 +44,12 @@ def from_config(config: dict):
     selection = {axis: stack.get(axis, axis_default(axis)) for axis in AXES}
     addons = config.get("addons", [])
     schema = config.get("schema", [])
+    structure = config.get("structure", {})
     if not isinstance(addons, list) or not isinstance(schema, list):
         raise InvalidSelection("Config 'addons' and 'schema' must be lists.")
-    return config.get("project_name", "my-app"), selection, addons, schema
+    if not isinstance(structure, dict):
+        raise InvalidSelection("Config 'structure' must be an object.")
+    return config.get("project_name", "my-app"), selection, addons, schema, structure
 
 
 def encode(config: dict) -> str:

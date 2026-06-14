@@ -16,7 +16,7 @@
         </p>
       </header>
 
-      <form id="gen-form" method="post" action="{{ url_for('generate') }}">
+      <form id="gen-form">
         <label class="field">
           <span class="field-label">Project name</span>
           <input
@@ -81,9 +81,66 @@
           </div>
         </fieldset>
 
-        <p id="error" class="error" {% if not error %}hidden{% endif %}>
-          {{ error or "" }}
-        </p>
+        <fieldset class="axis">
+          <legend>Project structure</legend>
+          <p class="hint">
+            Choose where the backend/frontend land and what the top-level folder
+            is called.
+          </p>
+          <div class="options">
+            <label class="option">
+              <input type="radio" name="layout" value="nested" checked />
+              <span class="option-body">
+                <span class="option-name">Separate folders</span>
+                <span class="option-summary">backend/ + frontend/ (default)</span>
+              </span>
+            </label>
+            <label class="option">
+              <input type="radio" name="layout" value="monorepo" />
+              <span class="option-body">
+                <span class="option-name">Monorepo</span>
+                <span class="option-summary">apps/api + apps/web</span>
+              </span>
+            </label>
+            <label class="option">
+              <input type="radio" name="layout" value="custom" />
+              <span class="option-body">
+                <span class="option-name">Custom</span>
+                <span class="option-summary">name the folders yourself</span>
+              </span>
+            </label>
+          </div>
+          <div id="custom-dirs" hidden>
+            <label class="field">
+              <span class="field-label">Backend folder</span>
+              <input type="text" id="dir-backend" placeholder="backend" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="field-label">Frontend folder</span>
+              <input type="text" id="dir-frontend" placeholder="frontend" autocomplete="off" />
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Root folder</span>
+            <input type="text" id="root-dir" placeholder="(project name)" autocomplete="off" />
+          </label>
+          <label class="check">
+            <input type="checkbox" id="no-wrapper" />
+            <span>No wrapping folder (files at the zip root)</span>
+          </label>
+        </fieldset>
+
+        <fieldset class="axis">
+          <legend>Files &amp; folders</legend>
+          <p class="hint">
+            Add your own files or folders — e.g. one folder per class assignment.
+            End a path with <code>/</code> to make an empty folder.
+          </p>
+          <div id="files-editor"></div>
+          <button type="button" id="add-file" class="ghost">+ Add file/folder</button>
+        </fieldset>
+
+        <p id="error" class="error" hidden></p>
 
         <div class="actions">
           <button id="submit" type="submit" class="primary">Download .zip</button>
@@ -101,7 +158,9 @@
     <script id="addons-meta" type="application/json">{{ addons_meta_json | safe }}</script>
     <script id="field-types" type="application/json">{{ field_types_json | safe }}</script>
     <script id="initial-schema" type="application/json">{{ schema_json | safe }}</script>
+    <script id="initial-structure" type="application/json">{{ structure_json | safe }}</script>
     <script src="{{ url_for('static', filename='js/entities.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/structure.js') }}"></script>
     <script src="{{ url_for('static', filename='js/preset.js') }}"></script>
     <script src="{{ url_for('static', filename='js/form.js') }}"></script>
   </body>

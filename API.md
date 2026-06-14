@@ -38,6 +38,7 @@ back to its default, so the smallest valid body is `{}`.
 | `stack`        | object   | all defaults | `backend, frontend, database, styling, auth, api, pkg`. |
 | `addons`       | string[] | `[]`       | e.g. `["docker", "tests"]`.                       |
 | `schema`       | object[] | one demo `Item` | Entities (see below). Empty → default demo.  |
+| `structure`    | object   | `{}`       | Custom layout: component dirs, root, extra files (see below). |
 
 An **entity**: `{ "name": "Product", "plural": "products", "fields": [ ... ] }`
 (`plural` optional). A **field**: `{ "name": "title", "type": "string",
@@ -45,6 +46,33 @@ An **entity**: `{ "name": "Product", "plural": "products", "fields": [ ... ] }`
 
 Call `GET /api/options` for the current valid option ids and which combinations
 are compatible (`tags`).
+
+### Custom directory & file structure (`structure`)
+
+Reshape the generated layout without breaking the run-ability guarantee.
+
+| Field    | Type     | Notes                                                              |
+| -------- | -------- | ----------------------------------------------------------------- |
+| `root`   | string   | Top-level wrapper folder. `""` = files at the zip root; omit = `slug(project_name)`. |
+| `layout` | string   | `nested` (default: `backend/`+`frontend/`) or `monorepo` (`apps/api`+`apps/web`). |
+| `dirs`   | object   | Explicit `{ "backend": "server", "frontend": "web" }` (overrides `layout`). |
+| `files`  | object[] | Inject files: `{ "path": "...", "content": "..." }`. A `path` ending in `/` (or with no content) makes an empty folder. A collision with a generated file is a 400. |
+
+Renamed component dirs stay runnable — the Docker build context, README `cd`, and
+manifests all follow. A files-only project (no backend/frontend, just `files`) is
+allowed — handy for, say, a folder of class assignments.
+
+```jsonc
+"structure": {
+  "root": "cs101",
+  "layout": "monorepo",
+  "files": [
+    { "path": "assignments/hw1/README.md", "content": "# Homework 1" },
+    { "path": "assignments/hw1/starter.py", "content": "def solve():\n    pass\n" },
+    { "path": "assignments/hw2/" }
+  ]
+}
+```
 
 **Responses:** `200` → `application/zip` (with `Content-Disposition`);
 `400` → `{"error": ...}` (malformed body or incompatible stack);

@@ -36,26 +36,40 @@ authored + structurally tested here; real compile/run is CI-only.
   `_build_manifests()` (per-language: requirements.txt / package.json / go.mod /
   Gemfile — dispatch on `backend_lang`; `side_mods` = database+auth+api fold deps in),
   `_apply_pkg_manager()` (rewrites npm cmds in README), `compose()` (fills axis
-  defaults, validates, renders base+axes+addons, emits README + `stackgen.json`).
+  defaults, validates, renders base+axes+addons, emits README + `stackgen.json`,
+  injects custom files). **Layout:** the tree is rooted at `root_dir` (not the
+  slug); `backend_dir`/`frontend_dir` come from `structure`, so Docker/README/build
+  paths follow renames for free. `validate(require_component=False)` allows a
+  files-only project. `slug` still names packages (package.json/go module).
 - **`schema.py`** — user entities. `FIELD_TYPES` (per-language column maps:
-  `sa/py/go/ddl/input`), `Field`/`Entity` (props: `class_name,var,plural,table,route,
-  pascal,mapped,pydantic,sa,go,ddl`), `normalize()`, `validate_schema()`,
-  `render_flags()`. Empty schema → default single `Item{name}`.
+  `sa/py/go/ddl/input`), `Field`/`Entity` (props: `class_name,var,camel,plural,table,
+  route,mapped,pydantic,sa,go,ddl,prisma,django`; `Field.pascal` for struct ids),
+  `normalize()`, `validate_schema()`, `render_flags()`. Empty schema → default `Item{name}`.
+- **`structure.py`** — custom layout. `normalize_structure(raw, selection,
+  default_root)` → `Structure(root, backend_dir, frontend_dir, files)`; `LAYOUTS`
+  presets (`nested`/`monorepo`); `_safe_relpath()` blocks `..`/absolute paths. Files
+  with a trailing `/` (or no content) become an empty folder via `.gitkeep`.
 - **`preset.py`** — config `to_config/from_config/encode/decode` (base64url; mirrored
-  by `public/js/preset.js`). `errors.py` — shared `InvalidSelection`.
+  by `public/js/preset.js`). Config carries `structure`; `from_config` returns a
+  5-tuple `(name, selection, addons, schema, structure)`. `errors.py` — shared
+  `InvalidSelection`.
 - **`project_env.py`** — Jinja env for scaffolds: **delimiters are `[[ ]]` / `[% %]`
   / `[# #]`**, `trim_blocks`+`lstrip_blocks` on.
 
-`app.py` (Flask): UI routes `GET /` (+`?c=` preset prefill) + `POST /generate`;
-**JSON API** `POST /api/generate` (lenient body — `_parse_api_request` accepts a
-nested `stack` or flat axes, omitted axes default via `compose`), `GET
-/api/options` (discovery catalog), `GET /api/health`, `GET /api/openapi.json`.
-Cross-cutting (scoped to `/api/*`): `_cors_headers` (open CORS), `_api_gate`
-(OPTIONS preflight + **env-gated** `x-api-key`, enforced only when `API_KEY` is
-set), and `HTTPException`/`Exception` handlers → JSON errors. `DEFAULTS`,
-`ADDONS_META`. Spec lives in `public/openapi.json`; examples in `API.md`. UI:
-`templates/index.html`, `public/css/app.css`, `public/js/{form,entities,preset}.js`
-(form.js gates options live using the same tags as the server).
+`app.py` (Flask): `GET /` renders the form (+`?c=` preset prefill). **There is no
+`POST /generate`** — generation runs only through the **JSON API**, which the UI
+calls too (one code path). API: `POST /api/generate` (lenient body —
+`_parse_api_request` accepts a nested `stack` or flat axes + `addons`/`schema`/
+`structure`, omitted axes default via `compose`), `GET /api/options` (discovery),
+`GET /api/health`, `GET /api/openapi.json`. Cross-cutting (scoped to `/api/*`):
+`_cors_headers` (open CORS), `_api_gate` (OPTIONS preflight + **env-gated**
+`x-api-key`, enforced only when `API_KEY` is set), `HTTPException`/`Exception`
+handlers → JSON errors, `MAX_CONTENT_LENGTH` 4 MB. Spec in `public/openapi.json`;
+examples in `API.md`. UI: `templates/index.html`, `public/css/app.css`,
+`public/js/{entities,structure,preset,form}.js` (load order matters: `form.js`
+intercepts submit → builds config via `window.buildConfig` (preset.js, all 7 axes
++ `structure` from structure.js) → `fetch('/api/generate')` → downloads the blob;
+form.js also gates options live using the same tags as the server).
 
 `scaffolds/`: `backend/<id>/`, `frontend/<id>/`, `database/{sql,memory,drizzle}/`,
 `addons/<id>/`, `base/`. Tests in `tests/` use **pairwise** coverage

@@ -37,6 +37,34 @@
           "fields": { "type": "array", "items": { "$ref": "#/components/schemas/Field" }, "minItems": 1 }
         }
       },
+      "Structure": {
+        "type": "object",
+        "description": "Optional layout control: where components live, the root wrapper, and extra files/folders. Renamed component dirs stay runnable (they thread through Docker/README/build paths); injected files are additive and a collision with a generated file is rejected.",
+        "properties": {
+          "root": { "type": "string", "description": "Top-level wrapper folder; \"\" puts files at the zip root; omitted = slug(project_name).", "example": "cs101" },
+          "layout": { "type": "string", "enum": ["nested", "monorepo"], "default": "nested", "description": "nested = backend/ + frontend/ (or root when alone); monorepo = apps/api + apps/web." },
+          "dirs": {
+            "type": "object",
+            "description": "Explicit component-directory overrides (win over 'layout').",
+            "properties": {
+              "backend": { "type": "string", "example": "server" },
+              "frontend": { "type": "string", "example": "web" }
+            }
+          },
+          "files": {
+            "type": "array",
+            "description": "Extra files/folders to inject. A path ending in '/' (or with no content) creates an empty folder (via .gitkeep).",
+            "items": {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "type": "string", "example": "assignments/hw1/README.md" },
+                "content": { "type": "string", "example": "# Homework 1" }
+              }
+            }
+          }
+        }
+      },
       "GenerateRequest": {
         "type": "object",
         "description": "Either nest the axes under 'stack' (canonical preset config) or place them at the top level. Any omitted axis falls back to its default, so {} is valid.",
@@ -55,7 +83,8 @@
             }
           },
           "addons": { "type": "array", "items": { "type": "string" }, "example": ["docker", "tests"] },
-          "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } }
+          "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } },
+          "structure": { "$ref": "#/components/schemas/Structure" }
         }
       },
       "Error": {

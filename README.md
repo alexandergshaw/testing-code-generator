@@ -95,11 +95,17 @@ LLMs involved:
   (pytest against the API), **CI** (GitHub Actions), **Lint** (Ruff / Prettier),
   **Env** (`.env.example`), and **MIT License**. Add-ons that don't fit the
   chosen stack are hidden in the UI and dropped server-side.
+- **Project structure.** Rename where the backend/frontend land (or pick a
+  *Monorepo* layout), control the root folder (or drop it entirely), and inject
+  your own files/folders — e.g. one folder per class assignment. Renamed dirs stay
+  runnable; injected files can't clobber generated ones. See the
+  [`structure`](API.md#custom-directory--file-structure-structure) config.
 - **Presets.** *Save config* downloads the selection as `stackgen.json`,
   *Copy share link* encodes it into a `?c=…` URL, and *Import config* reloads a
   saved file. Every zip also contains its own `stackgen.json`, so a build is
-  reproducible. For scripting and other apps, the [HTTP API](API.md)
-  (`POST /api/generate`) takes a config JSON body and streams back the zip.
+  reproducible. The browser **generates by calling the [HTTP API](API.md)**
+  (`POST /api/generate`) — the same endpoint other apps use — so there's one code
+  path, not a separate form handler.
 
 ## How it works
 

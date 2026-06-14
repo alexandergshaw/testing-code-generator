@@ -34,9 +34,10 @@ ADDONS_META = [
 # app.py` serving the same /css/... and /js/... paths.
 app = Flask(__name__, static_folder="public", static_url_path="")
 
-# Generation requests are tiny JSON; cap the body so a bad caller can't stream
-# megabytes at the function (over-size bodies raise 413 -> JSON error).
-app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB
+# Cap the request body so a bad caller can't stream huge payloads at the function
+# (over-size bodies raise 413 -> JSON error). 4 MB leaves room for injected custom
+# files while staying under Vercel's ~4.5 MB response limit.
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024
 
 DEFAULTS = {"backend": "flask", "frontend": "vanilla", "database": "none",
             "styling": "plain", "auth": "none", "api": "rest", "pkg": "npm"}
@@ -98,8 +99,8 @@ def _on_uncaught(err: Exception):
 # --------------------------------------------------------------------------- #
 # HTML UI
 # --------------------------------------------------------------------------- #
-def _render(selected, project_name="my-app", error=None, addons=(), schema=(), status=200):
-    html = render_template(
+def _render(selected, project_name="my-app", addons=(), schema=(), structure=None):
+    return render_template(
         "index.html",
         axes=AXES,
         axis_labels=AXIS_LABELS,
@@ -108,13 +109,12 @@ def _render(selected, project_name="my-app", error=None, addons=(), schema=(), s
         selected=selected,
         selected_addons=list(addons),
         schema_json=json.dumps(list(schema)),
+        structure_json=json.dumps(structure or {}),
         project_name=project_name,
-        error=error,
         module_tags_json=json.dumps(module_tags()),
         addons_meta_json=json.dumps(ADDONS_META),
         field_types_json=json.dumps(list(FIELD_TYPES)),
     )
-    return (html, status) if status != 200 else html
 
 
 def _zip_response(tree, project_name):
@@ -128,32 +128,22 @@ def _zip_response(tree, project_name):
 
 @app.get("/")
 def index():
-    """Render the form, optionally pre-filled from a shared ``?c=`` preset."""
+    """Render the form, optionally pre-filled from a shared ``?c=`` preset.
+
+    Generation itself goes through the JSON API (``POST /api/generate``) — the
+    browser builds the config and downloads the zip — so there is one code path.
+    """
     token = request.args.get("c")
     if token:
         try:
-            name, selection, addons, schema = preset.from_config(preset.decode(token))
-            return _render(selection, name, addons=addons, schema=schema)
+            name, selection, addons, schema, structure = preset.from_config(
+                preset.decode(token)
+            )
+            return _render(selection, name, addons=addons, schema=schema,
+                           structure=structure)
         except InvalidSelection:
             pass  # fall through to defaults on a bad link
     return _render(DEFAULTS)
-
-
-@app.post("/generate")
-def generate():
-    # Only axes the form actually sent; the composer fills any omitted axis with
-    # its default (so new axes don't break partial posts).
-    selection = {axis: request.form[axis] for axis in AXES if request.form.get(axis)}
-    project_name = request.form.get("project_name", "").strip()
-    addons = request.form.getlist("addons")
-    schema = _parse_schema(request.form.get("schema", ""))
-    try:
-        tree = compose(selection, project_name, schema=schema, addons=addons)
-    except InvalidSelection as exc:
-        merged = {**DEFAULTS, **{k: v for k, v in selection.items() if v}}
-        return _render(merged, project_name or "my-app", str(exc),
-                       addons=addons, schema=schema, status=400)
-    return _zip_response(tree, project_name)
 
 
 # --------------------------------------------------------------------------- #
@@ -175,9 +165,12 @@ def _parse_api_request(body):
     selection = {axis: stack[axis] for axis in AXES if axis in stack}
     addons = body.get("addons", [])
     schema = body.get("schema", [])
+    structure = body.get("structure", {})
     if not isinstance(addons, list) or not isinstance(schema, list):
         raise InvalidSelection("'addons' and 'schema' must be JSON arrays.")
-    return (body.get("project_name") or "my-app"), selection, addons, schema
+    if not isinstance(structure, dict):
+        raise InvalidSelection("'structure' must be a JSON object.")
+    return (body.get("project_name") or "my-app"), selection, addons, schema, structure
 
 
 @app.post("/api/generate")
@@ -189,8 +182,8 @@ def api_generate():
             400, "Expected a JSON object body (Content-Type: application/json)."
         )
     try:
-        name, selection, addons, schema = _parse_api_request(body)
-        tree = compose(selection, name, schema=schema, addons=addons)
+        name, selection, addons, schema, structure = _parse_api_request(body)
+        tree = compose(selection, name, schema=schema, addons=addons, structure=structure)
     except InvalidSelection as exc:
         return _json_error(400, str(exc))
     return _zip_response(tree, name)
@@ -234,16 +227,6 @@ def api_options():
 @app.get("/api/openapi.json")
 def api_openapi():
     return app.send_static_file("openapi.json")
-
-
-def _parse_schema(raw: str):
-    if not raw.strip():
-        return []
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    return value if isinstance(value, list) else []
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ from .registry import (
     get_module,
 )
 from .schema import is_default, normalize, render_flags, validate_schema
+from .structure import normalize_structure
 
 BACKEND_PORT = 8000
 FRONTEND_PORT = 3000
@@ -34,14 +35,15 @@ __all__ = ["InvalidSelection", "compose", "validate", "slugify", "build_context"
 # --------------------------------------------------------------------------- #
 # Validation
 # --------------------------------------------------------------------------- #
-def validate(selection: dict[str, str]) -> None:
+def validate(selection: dict[str, str], *, require_component: bool = True) -> None:
     """Check a selection against the registry and capability tags.
 
     Each option declares ``provides``/``requires`` tags; a selection is valid
     when every selected option's required tags are provided by the rest of the
     selection, plus the structural rule that at least one runnable component
     (backend or frontend) is chosen. Raises ``InvalidSelection`` on the first
-    problem found.
+    problem found. ``require_component=False`` relaxes the structural rule (used
+    for files-only projects that ship just custom files).
     """
     for axis in AXES:
         if axis not in selection:
@@ -61,7 +63,7 @@ def validate(selection: dict[str, str]) -> None:
                     mod.requires_msg
                     or f"{mod.label} isn't compatible with the rest of the stack."
                 )
-    if "backend" not in provided and "frontend" not in provided:
+    if require_component and "backend" not in provided and "frontend" not in provided:
         raise InvalidSelection("Pick at least a backend or a frontend — not neither.")
 
 
@@ -98,6 +100,7 @@ def build_context(
     entities=None,
     is_default_schema: bool = True,
     addons=(),
+    structure=None,
 ) -> dict:
     """Derive every variable the scaffold templates may reference."""
     backend, frontend = selection["backend"], selection["frontend"]
@@ -109,15 +112,21 @@ def build_context(
     # A frontend that ships npm deps needs a build step (a Vite SPA); vanilla
     # does not. Deriving from npm keeps this true for any future SPA framework.
     spa = has_frontend and bool(get_module("frontend", frontend).npm)
-    two_dirs = has_backend and has_frontend
     # The backend's language drives manifest synthesis and per-language templates.
     backend_lang = (
         get_module("backend", backend).context.get("lang", "") if has_backend else ""
     )
+    # Resolve the (optionally customized) layout: component dir names + root wrapper
+    # + any user-injected files. Everything downstream derives from these, so a
+    # renamed/relocated component stays internally consistent (and runnable).
+    slug = slugify(project_name)
+    struct = normalize_structure(structure, selection, default_root=slug)
 
     ctx = {
         "project_name": project_name or "my-app",
-        "project_slug": slugify(project_name),
+        "project_slug": slug,
+        "root_dir": struct.root,
+        "structure_files": struct.files,
         "backend": backend,
         "frontend": frontend,
         "database": database,
@@ -129,8 +138,8 @@ def build_context(
         "backend_lang": backend_lang,
         "python_backend": backend_lang == "python",
         "node_backend": backend_lang == "node",
-        "backend_dir": "backend" if two_dirs else "",
-        "frontend_dir": "frontend" if two_dirs else "",
+        "backend_dir": struct.backend_dir,
+        "frontend_dir": struct.frontend_dir,
         "backend_port": BACKEND_PORT,
         "frontend_port": FRONTEND_PORT,
         "api_base_url": f"http://localhost:{BACKEND_PORT}",
@@ -222,7 +231,7 @@ def _render_module(src: str, dest_dir: str, ctx: dict, env, tree: dict) -> None:
         else:
             content = path.read_bytes()
         rel = _resolve_tokens(rel, ctx)
-        tree[_join(ctx["project_slug"], dest_dir, rel)] = content
+        tree[_join(ctx["root_dir"], dest_dir, rel)] = content
 
 
 # --------------------------------------------------------------------------- #
@@ -267,7 +276,8 @@ def _gemfile(gems) -> bytes:
 
 
 def _build_manifests(selection: dict, ctx: dict, tree: dict, addon_mods=()) -> None:
-    slug = ctx["project_slug"]
+    slug = ctx["project_slug"]  # package/module *name* (independent of layout)
+    root = ctx["root_dir"]      # where files are rooted in the tree
     backend_mod = get_module("backend", selection["backend"])
     frontend_mod = get_module("frontend", selection["frontend"])
     addon_mods = list(addon_mods)
@@ -283,27 +293,27 @@ def _build_manifests(selection: dict, ctx: dict, tree: dict, addon_mods=()) -> N
         reqs = set()
         for mod in backend_part:
             reqs |= set(mod.requirements)
-        tree[_join(slug, backend_dir, "requirements.txt")] = (
+        tree[_join(root, backend_dir, "requirements.txt")] = (
             "\n".join(sorted(reqs)) + "\n"
         ).encode("utf-8")
     elif lang == "node":
-        tree[_join(slug, backend_dir, "package.json")] = _package_json(
+        tree[_join(root, backend_dir, "package.json")] = _package_json(
             f"{slug}-backend", [backend_mod, *side_mods, *addon_mods], ctx
         )
     elif lang == "go":
         go_req = set()
         for mod in backend_part:
             go_req |= set(mod.context.get("go_require", ()))
-        tree[_join(slug, backend_dir, "go.mod")] = _go_mod(slug, go_req)
+        tree[_join(root, backend_dir, "go.mod")] = _go_mod(slug, go_req)
     elif lang == "ruby":
         gems = set()
         for mod in backend_part:
             gems |= set(mod.context.get("gems", ()))
-        tree[_join(slug, backend_dir, "Gemfile")] = _gemfile(gems)
+        tree[_join(root, backend_dir, "Gemfile")] = _gemfile(gems)
 
     # Frontend manifest (SPA only).
     if ctx["spa"]:
-        tree[_join(slug, ctx["frontend_dir"], "package.json")] = _package_json(
+        tree[_join(root, ctx["frontend_dir"], "package.json")] = _package_json(
             f"{slug}-frontend", [frontend_mod, *addon_mods], ctx
         )
 
@@ -395,16 +405,24 @@ def compose(
     *,
     schema=(),
     addons=(),
+    structure=None,
 ) -> dict[str, bytes]:
     """Validate inputs and return ``{relative_path: bytes}`` for the zip.
 
     ``schema`` is the raw list of entity dicts (empty → default ``Item`` demo);
-    ``addons`` is the list of selected add-on ids.
+    ``addons`` is the list of selected add-on ids; ``structure`` is the optional
+    layout config (component dirs, root wrapper, injected files).
     """
     # Fill any axis the caller omitted with its default (keeps older 4-axis
     # callers and presets working as new axes are added).
     selection = {**{axis: axis_default(axis) for axis in AXES}, **selection}
-    validate(selection)
+    # A files-only project (no backend/frontend, but custom files supplied) is a
+    # valid output — e.g. a folder of class assignments — so relax the structural
+    # rule in that one case.
+    has_custom_files = bool(isinstance(structure, dict) and structure.get("files"))
+    files_only = (selection["backend"] == "none" and selection["frontend"] == "none"
+                  and has_custom_files)
+    validate(selection, require_component=not files_only)
     validate_schema(schema, selection)
     addon_mods = resolve_addons(addons, selection)
     entities = normalize(schema)
@@ -415,6 +433,7 @@ def compose(
         entities=entities,
         is_default_schema=is_default(schema),
         addons=addon_mods,
+        structure=structure,
     )
     env = build_project_env()
     tree: dict[str, bytes] = {}
@@ -434,11 +453,23 @@ def compose(
             _render_module(mod.src, "", ctx, env, tree)
 
     # 4. Computed manifests + README + the reproducible config.
+    root = ctx["root_dir"]
     _build_manifests(selection, ctx, tree, addon_mods)
-    tree[_join(ctx["project_slug"], "README.md")] = _readme(selection, ctx)
-    config = to_config(ctx["project_name"], selection, [m.id for m in addon_mods], schema)
-    tree[_join(ctx["project_slug"], "stackgen.json")] = (
+    tree[_join(root, "README.md")] = _readme(selection, ctx)
+    config = to_config(ctx["project_name"], selection, [m.id for m in addon_mods],
+                       schema, structure or {})
+    tree[_join(root, "stackgen.json")] = (
         json.dumps(config, indent=2) + "\n"
     ).encode("utf-8")
+
+    # 5. User-injected custom files/folders (additive; a collision with a
+    #    generated file is an error, never a silent overwrite).
+    for rel, content in ctx["structure_files"]:
+        key = _join(root, rel)
+        if key in tree:
+            raise InvalidSelection(
+                f"Custom file {rel!r} would overwrite a generated file."
+            )
+        tree[key] = content.encode("utf-8")
 
     return tree

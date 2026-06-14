@@ -1,7 +1,8 @@
 // Save / share / import the whole configuration. encode/decode mirror
 // generator/preset.py (URL-safe base64 of JSON).
 const presetForm = document.getElementById("gen-form");
-const AXES = ["backend", "frontend", "database", "styling"];
+// All seven axes (mirrors registry.AXES) so auth/api/pkg are preserved too.
+const AXES = ["backend", "frontend", "database", "styling", "auth", "api", "pkg"];
 
 function buildConfig() {
   const stack = {};
@@ -16,6 +17,7 @@ function buildConfig() {
     stack,
     addons,
     schema: window.entitiesEditor.getSchema(),
+    structure: window.structureEditor.getStructure(),
   };
 }
 
@@ -37,8 +39,14 @@ function applyConfig(config) {
     box.checked = addons.has(box.value);
   });
   window.entitiesEditor.setSchema(config.schema || []);
+  window.structureEditor.setStructure(config.structure || {});
   presetForm.dispatchEvent(new Event("change"));
 }
+
+// Shared with form.js so the single generation path (POST /api/generate) and the
+// save/share features build the exact same config object.
+window.buildConfig = buildConfig;
+window.applyConfig = applyConfig;
 
 document.getElementById("copy-link").addEventListener("click", async () => {
   const url = `${location.origin}${location.pathname}?c=${encodeConfig(buildConfig())}`;

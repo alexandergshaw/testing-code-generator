@@ -1,7 +1,8 @@
-"""Route-level tests for the Flask generator UI."""
-import io
-import zipfile
+"""Route-level tests for the Flask generator UI shell.
 
+Generation now runs entirely through the JSON API (see tests/test_http_api.py);
+the UI is a client of it. These tests cover the rendered shell only.
+"""
 import pytest
 
 from app import app as flask_app
@@ -21,39 +22,13 @@ def test_index_lists_axes(client):
     assert "Frontend framework" in body
 
 
-def test_generate_returns_zip(client):
-    res = client.post(
-        "/generate",
-        data={
-            "project_name": "My App",
-            "backend": "flask",
-            "frontend": "vanilla",
-            "database": "sqlite",
-            "styling": "bootstrap",
-        },
-    )
-    assert res.status_code == 200
-    assert res.mimetype == "application/zip"
-    assert "my-app.zip" in res.headers["Content-Disposition"]
-
-    zf = zipfile.ZipFile(io.BytesIO(res.data))
-    names = zf.namelist()
-    assert any(n.endswith("app.py") for n in names)
-    assert any(n.endswith("index.html") for n in names)
-    assert any(n.endswith("db.py") for n in names)
-    assert "my-app/README.md" in names
+def test_index_has_structure_controls(client):
+    body = client.get("/").get_data(as_text=True)
+    assert "Project structure" in body          # layout/root controls
+    assert "Files &amp; folders" in body         # custom files editor
+    assert 'src="/js/structure.js"' in body
 
 
-def test_generate_rejects_invalid_selection(client):
-    res = client.post(
-        "/generate",
-        data={
-            "project_name": "x",
-            "backend": "none",
-            "frontend": "none",
-            "database": "none",
-            "styling": "plain",
-        },
-    )
-    assert res.status_code == 400
-    assert "at least a backend or a frontend" in res.get_data(as_text=True).lower()
+def test_generate_form_route_removed(client):
+    # The old form-POST endpoint is gone; the UI uses POST /api/generate instead.
+    assert client.post("/generate", data={}).status_code in (404, 405)

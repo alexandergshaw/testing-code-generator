@@ -260,3 +260,54 @@ legend {
   background: var(--border);
   cursor: not-allowed;
 }
+
+/* Project structure: custom dirs, root checkbox, and the files/folders editor. */
+#custom-dirs {
+  margin-bottom: 1rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.check input {
+  width: auto;
+}
+
+.file-row {
+  margin-bottom: 0.6rem;
+}
+
+.file-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+
+.file-path {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.file-content {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}

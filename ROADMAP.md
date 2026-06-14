@@ -5,8 +5,14 @@ is the work queue + copy-paste recipes. Goal of the project: be *exhaustive* acr
 axes/options and languages, while **every generated combo actually runs**.
 
 ## Status snapshot
-- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~301 tests pass
+- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~317 tests pass
   (1 skipped = Ruby `ruby -c`, no local toolchain). Pairwise keeps the suite ~10s.
+- **Custom structure landed** (`generator/structure.py`): a `structure` config
+  block reshapes the layout — component-dir renames + `monorepo` preset, root-folder
+  control (incl. no-wrapper), and injected files/folders (e.g. one folder per class
+  assignment), plus files-only projects. The **UI now generates via `POST
+  /api/generate`** (one code path); `POST /generate` is gone. Renamed dirs stay
+  runnable (live-verified: flask relocated to `server/` boots + CRUD/JWT).
 - **Cloud HTTP API landed** (the end goal): `POST /api/generate` (JSON→zip, lenient
   body), `GET /api/options` (discovery), `GET /api/health`, `GET /api/openapi.json`,
   with open CORS, env-gated `x-api-key`, and JSON errors — all scoped to `/api/*` in
@@ -30,6 +36,20 @@ axes/options and languages, while **every generated combo actually runs**.
   db push` (predev/prestart) via npm lifecycle scripts — no backend/composer edits.
 
 ## Objectives (priority order)
+
+### 00. ✅ DONE — Custom directory & file structures (UI + API)
+`generator/structure.py` normalizes a `structure` block: `root` (or `""` = no
+wrapper), `layout` (`nested`/`monorepo`) + explicit `dirs`, and injected `files`
+(trailing `/` ⇒ empty folder via `.gitkeep`). Composer roots the tree at `root_dir`
+and threads dir names through Docker/README/manifests; `compose` injects files
+(collision ⇒ `InvalidSelection`) and allows files-only projects
+(`validate(require_component=False)`). The UI gained a "Project structure" +
+"Files & folders" section and now generates by `fetch('/api/generate')` —
+`POST /generate` was removed. Config round-trips via `preset.py`/`preset.js`
+(5-tuple). Tests: `tests/test_structure.py` + extended http/preset/routes tests.
+- **Possible follow-ups:** more layout presets; `{{project_name}}`-style templating
+  inside injected file content; binary/upload file contents (text-only today);
+  a higher-level "assignments" helper (repeat a folder template N times).
 
 ### 0. ✅ DONE (code) — Cloud HTTP API on Vercel  ·  ⏳ deploy is a user step
 The generator is now a JSON API callable from other apps. All in [app.py](app.py),

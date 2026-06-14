@@ -45,6 +45,31 @@ def test_generate_flat_body_also_works(client):
     assert any(n.endswith("server.js") for n in _names(resp))
 
 
+def test_generate_with_custom_structure(client):
+    resp = client.post("/api/generate", json={
+        "project_name": "cs101",
+        "stack": {"backend": "flask"},
+        "structure": {
+            "root": "cs101",
+            "layout": "monorepo",
+            "files": [{"path": "assignments/hw1/README.md", "content": "# HW1"}],
+        },
+    })
+    assert resp.status_code == 200
+    names = _names(resp)
+    assert "cs101/apps/api/app.py" in names                 # monorepo dir
+    assert "cs101/assignments/hw1/README.md" in names       # injected file
+
+
+def test_generate_bad_structure_is_json_400(client):
+    resp = client.post("/api/generate", json={
+        "stack": {"backend": "flask"},
+        "structure": {"files": [{"path": "../escape", "content": "x"}]},
+    })
+    assert resp.status_code == 400
+    assert resp.is_json and "error" in resp.get_json()
+
+
 def test_generate_invalid_stack_is_json_400(client):
     resp = client.post("/api/generate", json={"stack": {"backend": "django", "database": "sqlite"}})
     assert resp.status_code == 400
