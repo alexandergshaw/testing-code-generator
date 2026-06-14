@@ -68,7 +68,7 @@ _BACKENDS = [
         src="backend/flask",
         requirements=("Flask>=3.0", "flask-cors>=4.0"),
         context={"run": ["pip install -r requirements.txt", "python app.py"],
-                 "lang": "python"},
+                 "lang": "python", "extra_provides": ("graphql:strawberry",)},
     ),
     Module(
         id="fastapi",
@@ -79,6 +79,17 @@ _BACKENDS = [
         requirements=("fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.0"),
         context={"run": ["pip install -r requirements.txt",
                           "uvicorn main:app --reload --port 8000"],
+                 "lang": "python", "extra_provides": ("graphql:strawberry",)},
+    ),
+    Module(
+        id="litestar",
+        label="Litestar",
+        axis="backend",
+        summary="Modern Python ASGI API (Litestar).",
+        src="backend/litestar",
+        requirements=("litestar[standard]>=2.0",),
+        context={"run": ["pip install -r requirements.txt",
+                          "uvicorn main:app --port 8000"],
                  "lang": "python"},
     ),
     Module(
@@ -118,12 +129,34 @@ _BACKENDS = [
                                  "dev": "node --watch server.js"}},
     ),
     Module(
+        id="koa",
+        label="Koa",
+        axis="backend",
+        summary="Node.js / Koa JSON API (in-memory store).",
+        src="backend/koa",
+        npm=(("koa", "^2.15.0"), ("@koa/router", "^13.0.0"),
+             ("koa-bodyparser", "^4.4.0")),
+        context={"run": ["npm install", "npm run dev"],
+                 "lang": "node",
+                 "npm_scripts": {"start": "node server.js",
+                                 "dev": "node --watch server.js"}},
+    ),
+    Module(
         id="nethttp",
         label="Go (net/http)",
         axis="backend",
         summary="Go standard-library JSON API (in-memory store).",
         src="backend/nethttp",
         context={"run": ["go run ."], "lang": "go"},
+    ),
+    Module(
+        id="gin",
+        label="Gin (Go)",
+        axis="backend",
+        summary="Go Gin JSON API (in-memory store).",
+        src="backend/gin",
+        context={"run": ["go mod tidy", "go run ."], "lang": "go",
+                 "go_require": (("github.com/gin-gonic/gin", "v1.10.0"),)},
     ),
     Module(
         id="sinatra",
@@ -216,6 +249,19 @@ _FRONTENDS = [
                  "npm_scripts": {"dev": "vite", "build": "vite build",
                                  "preview": "vite preview"}},
     ),
+    Module(
+        id="lit",
+        label="Lit (Vite)",
+        axis="frontend",
+        summary="Lit web-components SPA via Vite.",
+        src="frontend/lit",
+        npm=(("lit", "^3.2.0"),),
+        npm_dev=(("vite", "^5.4.0"),),
+        context={"run": ["npm install", "npm run dev"],
+                 "npm_type": "module",
+                 "npm_scripts": {"dev": "vite", "build": "vite build",
+                                 "preview": "vite preview"}},
+    ),
     Module(id="none", label="No frontend", axis="frontend",
            summary="API only; no UI generated."),
 ]
@@ -294,9 +340,9 @@ _API = [
         id="graphql", label="GraphQL", axis="api",
         summary="Adds a Strawberry /graphql endpoint alongside REST.",
         requirements=("strawberry-graphql>=0.230",),
-        # v1: Python backend, in-memory store (no DB-backed resolvers yet).
-        requires=("lang:python", "in-memory"),
-        requires_msg="GraphQL (this version) needs a Python backend and no database.",
+        # v1: Flask/FastAPI (which ship the Strawberry schema), in-memory store.
+        requires=("graphql:strawberry", "in-memory"),
+        requires_msg="GraphQL (this version) needs Flask or FastAPI and no database.",
     ),
 ]
 
@@ -383,6 +429,7 @@ def _apply_default_tags() -> None:
         tags = {"backend"}
         if lang:
             tags |= {f"lang:{lang}", f"runtime:{lang}"}
+        tags |= set(mod.context.get("extra_provides", ()))
         mod.provides = frozenset(tags)
     for mod in _FRONTENDS:
         if mod.id == "none" or mod.provides:

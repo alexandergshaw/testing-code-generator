@@ -1,0 +1,181 @@
+// [[ project_name ]] — Gin JSON API
+package main
+
+import (
+[% if auth == "jwt" %]
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/base64"
+    "encoding/json"
+[% endif %]
+    "net/http"
+    "strconv"
+[% if auth == "jwt" %]
+    "strings"
+    "time"
+[% endif %]
+
+    "github.com/gin-gonic/gin"
+)
+
+[% for entity in entities %]
+type [[ entity.class_name ]] struct {
+    ID int `json:"id"`
+[% for f in entity.fields %]
+    [[ f.pascal ]] [[ f.go ]] `json:"[[ f.name ]]"`
+[% endfor %]
+}
+
+var [[ entity.var ]]Store = []*[[ entity.class_name ]]{}
+var [[ entity.var ]]Seq = 0
+[% endfor %]
+[% if auth == "jwt" %]
+
+const jwtSecret = "dev-secret-change-me" // override via env in production
+
+func b64url(b []byte) string {
+    return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func makeToken(sub string) string {
+    header := b64url([]byte(`{"alg":"HS256","typ":"JWT"}`))
+    body, _ := json.Marshal(map[string]any{"sub": sub, "exp": time.Now().Unix() + 3600})
+    payload := b64url(body)
+    mac := hmac.New(sha256.New, []byte(jwtSecret))
+    mac.Write([]byte(header + "." + payload))
+    return header + "." + payload + "." + b64url(mac.Sum(nil))
+}
+
+func verifyToken(token string) (map[string]any, bool) {
+    parts := strings.Split(token, ".")
+    if len(parts) != 3 {
+        return nil, false
+    }
+    mac := hmac.New(sha256.New, []byte(jwtSecret))
+    mac.Write([]byte(parts[0] + "." + parts[1]))
+    if !hmac.Equal([]byte(parts[2]), []byte(b64url(mac.Sum(nil)))) {
+        return nil, false
+    }
+    raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+    if err != nil {
+        return nil, false
+    }
+    var claims map[string]any
+    if err := json.Unmarshal(raw, &claims); err != nil {
+        return nil, false
+    }
+    if exp, ok := claims["exp"].(float64); ok && int64(exp) < time.Now().Unix() {
+        return nil, false
+    }
+    return claims, true
+}
+[% endif %]
+
+func main() {
+    r := gin.Default()
+    r.Use(func(c *gin.Context) {
+        c.Header("Access-Control-Allow-Origin", "*")
+        c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        if c.Request.Method == http.MethodOptions {
+            c.AbortWithStatus(http.StatusNoContent)
+            return
+        }
+        c.Next()
+    })
+
+    r.GET("/api/health", func(c *gin.Context) {
+        c.JSON(http.StatusOK, gin.H{"status": "ok"})
+    })
+[% if auth == "jwt" %]
+
+    r.POST("/api/login", func(c *gin.Context) {
+        var body struct {
+            Username string `json:"username"`
+        }
+        _ = c.ShouldBindJSON(&body)
+        if body.Username == "" {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "username required"})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"token": makeToken(body.Username)})
+    })
+
+    r.GET("/api/me", func(c *gin.Context) {
+        header := c.GetHeader("Authorization")
+        token := ""
+        if strings.HasPrefix(header, "Bearer ") {
+            token = header[7:]
+        }
+        claims, ok := verifyToken(token)
+        if !ok {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+            return
+        }
+        c.JSON(http.StatusOK, claims)
+    })
+[% endif %]
+[% for entity in entities %]
+
+    // ---- [[ entity.class_name ]] ----
+    r.GET("[[ entity.route ]]", func(c *gin.Context) {
+        c.JSON(http.StatusOK, [[ entity.var ]]Store)
+    })
+
+    r.POST("[[ entity.route ]]", func(c *gin.Context) {
+        var body [[ entity.class_name ]]
+        if err := c.ShouldBindJSON(&body); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+            return
+        }
+        [[ entity.var ]]Seq++
+        body.ID = [[ entity.var ]]Seq
+        [[ entity.var ]]Store = append([[ entity.var ]]Store, &body)
+        c.JSON(http.StatusCreated, body)
+    })
+
+    r.GET("[[ entity.route ]]/:id", func(c *gin.Context) {
+        id, _ := strconv.Atoi(c.Param("id"))
+        for _, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+                c.JSON(http.StatusOK, it)
+                return
+            }
+        }
+        c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+    })
+
+    r.PUT("[[ entity.route ]]/:id", func(c *gin.Context) {
+        id, _ := strconv.Atoi(c.Param("id"))
+        var body [[ entity.class_name ]]
+        if err := c.ShouldBindJSON(&body); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+            return
+        }
+        for _, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+[% for f in entity.fields %]
+                it.[[ f.pascal ]] = body.[[ f.pascal ]]
+[% endfor %]
+                c.JSON(http.StatusOK, it)
+                return
+            }
+        }
+        c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+    })
+
+    r.DELETE("[[ entity.route ]]/:id", func(c *gin.Context) {
+        id, _ := strconv.Atoi(c.Param("id"))
+        for i, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+                [[ entity.var ]]Store = append([[ entity.var ]]Store[:i], [[ entity.var ]]Store[i+1:]...)
+                c.Status(http.StatusNoContent)
+                return
+            }
+        }
+        c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+    })
+[% endfor %]
+
+    r.Run(":[[ backend_port ]]")
+}

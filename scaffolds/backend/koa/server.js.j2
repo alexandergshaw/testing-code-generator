@@ -1,0 +1,140 @@
+// [[ project_name ]] — Koa JSON API
+const Koa = require("koa");
+const Router = require("@koa/router");
+const bodyParser = require("koa-bodyparser");
+[% if auth == "jwt" %]
+const crypto = require("crypto");
+[% endif %]
+
+const app = new Koa();
+const router = new Router();
+
+app.use(async (ctx, next) => {
+  ctx.set("Access-Control-Allow-Origin", "*");
+  ctx.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  ctx.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (ctx.method === "OPTIONS") {
+    ctx.status = 204;
+    return;
+  }
+  await next();
+});
+app.use(bodyParser());
+
+[% for entity in entities %]
+let [[ entity.plural ]] = [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]];
+let [[ entity.var ]]Seq = [% if is_default_schema %]2[% else %]0[% endif %];
+[% endfor %]
+
+router.get("/api/health", (ctx) => {
+  ctx.body = { status: "ok" };
+});
+[% if auth == "jwt" %]
+
+const JWT_SECRET = "dev-secret-change-me"; // override via env in production
+
+function b64url(value) {
+  return Buffer.from(value).toString("base64url");
+}
+
+function makeToken(sub) {
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64url(JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600 }));
+  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  return `${header}.${payload}.${sig}`;
+}
+
+function verifyToken(token) {
+  const parts = (token || "").split(".");
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  if (sig !== expected) return null;
+  let claims;
+  try {
+    claims = JSON.parse(Buffer.from(payload, "base64url").toString());
+  } catch {
+    return null;
+  }
+  if ((claims.exp || 0) < Math.floor(Date.now() / 1000)) return null;
+  return claims;
+}
+
+router.post("/api/login", (ctx) => {
+  const body = ctx.request.body || {};
+  const username = (body.username ? String(body.username) : "").trim();
+  if (!username) {
+    ctx.status = 400;
+    ctx.body = { error: "username required" };
+    return;
+  }
+  ctx.body = { token: makeToken(username) };
+});
+
+router.get("/api/me", (ctx) => {
+  const header = ctx.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const claims = verifyToken(token);
+  if (!claims) {
+    ctx.status = 401;
+    ctx.body = { error: "unauthorized" };
+    return;
+  }
+  ctx.body = claims;
+});
+[% endif %]
+[% for entity in entities %]
+
+// ---- [[ entity.class_name ]] ----
+router.get("[[ entity.route ]]", (ctx) => {
+  ctx.body = [[ entity.plural ]];
+});
+
+router.post("[[ entity.route ]]", (ctx) => {
+  const body = ctx.request.body || {};
+  const item = { id: ++[[ entity.var ]]Seq[% for f in entity.fields %], [[ f.name ]]: body["[[ f.name ]]"][% endfor %] };
+  [[ entity.plural ]].push(item);
+  ctx.status = 201;
+  ctx.body = item;
+});
+
+router.get("[[ entity.route ]]/:id", (ctx) => {
+  const item = [[ entity.plural ]].find((x) => x.id === Number(ctx.params.id));
+  if (!item) {
+    ctx.status = 404;
+    ctx.body = { error: "not found" };
+    return;
+  }
+  ctx.body = item;
+});
+
+router.put("[[ entity.route ]]/:id", (ctx) => {
+  const item = [[ entity.plural ]].find((x) => x.id === Number(ctx.params.id));
+  if (!item) {
+    ctx.status = 404;
+    ctx.body = { error: "not found" };
+    return;
+  }
+  const body = ctx.request.body || {};
+[% for f in entity.fields %]
+  if ("[[ f.name ]]" in body) item.[[ f.name ]] = body["[[ f.name ]]"];
+[% endfor %]
+  ctx.body = item;
+});
+
+router.delete("[[ entity.route ]]/:id", (ctx) => {
+  const before = [[ entity.plural ]].length;
+  [[ entity.plural ]] = [[ entity.plural ]].filter((x) => x.id !== Number(ctx.params.id));
+  if ([[ entity.plural ]].length === before) {
+    ctx.status = 404;
+    ctx.body = { error: "not found" };
+    return;
+  }
+  ctx.status = 204;
+});
+[% endfor %]
+
+app.use(router.routes()).use(router.allowedMethods());
+
+const PORT = [[ backend_port ]];
+app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));

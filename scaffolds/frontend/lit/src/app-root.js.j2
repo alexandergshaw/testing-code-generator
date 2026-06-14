@@ -1,0 +1,128 @@
+import { html, LitElement } from "lit";
+
+import { API, ENTITIES, coerce } from "./data.js";
+
+class AppRoot extends LitElement {
+  static properties = {
+    data: { state: true },
+    forms: { state: true },
+  };
+
+  constructor() {
+    super();
+    this.data = {};
+    this.forms = {};
+    ENTITIES.forEach((entity) => {
+      this.data[entity.plural] = [];
+    });
+  }
+
+  // Light DOM so global / CDN styles apply to the rendered markup.
+  createRenderRoot() {
+    return this;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.loadAll();
+  }
+
+  async loadAll() {
+    if (!API) return;
+    const next = {};
+    for (const entity of ENTITIES) {
+      next[entity.plural] = await (await fetch(`${API}/${entity.plural}`)).json();
+    }
+    this.data = next;
+  }
+
+  setField(entity, name, value) {
+    this.forms = {
+      ...this.forms,
+      [entity.plural]: { ...(this.forms[entity.plural] || {}), [name]: value },
+    };
+  }
+
+  async add(entity, event) {
+    event.preventDefault();
+    const form = this.forms[entity.plural] || {};
+    const payload = {};
+    for (const field of entity.fields) {
+      const fallback = field.input === "checkbox" ? false : "";
+      payload[field.name] = coerce(field, form[field.name] ?? fallback);
+    }
+    if (API) {
+      await fetch(`${API}/${entity.plural}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await this.loadAll();
+    } else {
+      const rows = this.data[entity.plural] || [];
+      this.data = {
+        ...this.data,
+        [entity.plural]: [...rows, { id: rows.length + 1, ...payload }],
+      };
+    }
+    this.forms = { ...this.forms, [entity.plural]: {} };
+  }
+
+  async remove(entity, id) {
+    if (API) {
+      await fetch(`${API}/${entity.plural}/${id}`, { method: "DELETE" });
+      await this.loadAll();
+    } else {
+      this.data = {
+        ...this.data,
+        [entity.plural]: (this.data[entity.plural] || []).filter((row) => row.id !== id),
+      };
+    }
+  }
+
+  render() {
+    return html`
+      <main>
+        <h1>[[ project_name ]]</h1>
+        ${ENTITIES.map(
+          (entity) => html`
+            <section>
+              <h2>${entity.name}</h2>
+              <form @submit=${(e) => this.add(entity, e)}>
+                ${entity.fields.map((field) =>
+                  field.input === "checkbox"
+                    ? html`<label
+                        ><input
+                          type="checkbox"
+                          @input=${(e) => this.setField(entity, field.name, e.target.checked)}
+                        />
+                        ${field.name}</label
+                      >`
+                    : html`<input
+                        type=${field.input === "textarea" ? "text" : field.input}
+                        placeholder=${field.name}
+                        @input=${(e) => this.setField(entity, field.name, e.target.value)}
+                      />`,
+                )}
+                <button>Add</button>
+              </form>
+              <ul>
+                ${(this.data[entity.plural] || []).map(
+                  (row) => html`
+                    <li>
+                      ${entity.fields.map((f) => `${f.name}: ${row[f.name]}`).join(", ")}
+                      (#${row.id})
+                      <button @click=${() => this.remove(entity, row.id)}>✕</button>
+                    </li>
+                  `,
+                )}
+              </ul>
+            </section>
+          `,
+        )}
+      </main>
+    `;
+  }
+}
+
+customElements.define("app-root", AppRoot);
