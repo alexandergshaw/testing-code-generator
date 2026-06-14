@@ -1,0 +1,8 @@
+.venv/
+tests/
+conftest.py
+requirements-dev.txt
+__pycache__/
+.pytest_cache/
+*.db
+build_*/

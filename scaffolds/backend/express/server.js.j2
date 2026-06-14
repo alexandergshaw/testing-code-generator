@@ -1,0 +1,27 @@
+// [[ project_name ]] — Express JSON API
+const express = require("express");
+const cors = require("cors");
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+let items = [
+  { id: 1, name: "First item" },
+  { id: 2, name: "Second item" },
+];
+
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+app.get("/api/items", (req, res) => res.json(items));
+
+app.post("/api/items", (req, res) => {
+  const name = (req.body && req.body.name ? String(req.body.name) : "").trim();
+  if (!name) return res.status(400).json({ error: "name is required" });
+  const item = { id: items.length + 1, name };
+  items.push(item);
+  res.status(201).json(item);
+});
+
+const PORT = [[ backend_port ]];
+app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));

@@ -1,0 +1,53 @@
+"""[[ project_name ]] — Flask JSON API."""
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+[% if has_db %]
+from db import SessionLocal, Item, init_db
+[% endif %]
+
+app = Flask(__name__)
+CORS(app)
+[% if not has_db %]
+_items = [{"id": 1, "name": "First item"}, {"id": 2, "name": "Second item"}]
+[% endif %]
+
+
+@app.get("/api/health")
+def health():
+    return jsonify(status="ok")
+
+
+@app.get("/api/items")
+def list_items():
+[% if has_db %]
+    with SessionLocal() as session:
+        items = session.query(Item).order_by(Item.id).all()
+        return jsonify([{"id": i.id, "name": i.name} for i in items])
+[% else %]
+    return jsonify(_items)
+[% endif %]
+
+
+@app.post("/api/items")
+def add_item():
+    name = (request.get_json(silent=True) or {}).get("name", "").strip()
+    if not name:
+        return jsonify(error="name is required"), 400
+[% if has_db %]
+    with SessionLocal() as session:
+        item = Item(name=name)
+        session.add(item)
+        session.commit()
+        return jsonify(id=item.id, name=item.name), 201
+[% else %]
+    new = {"id": len(_items) + 1, "name": name}
+    _items.append(new)
+    return jsonify(new), 201
+[% endif %]
+
+
+if __name__ == "__main__":
+[% if has_db %]
+    init_db()
+[% endif %]
+    app.run(port=[[ backend_port ]], debug=True)

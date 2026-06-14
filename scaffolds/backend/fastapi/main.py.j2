@@ -1,0 +1,65 @@
+"""[[ project_name ]] — FastAPI JSON API."""
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+[% if has_db %]
+from db import SessionLocal, Item, init_db
+[% endif %]
+
+app = FastAPI(title="[[ project_name ]]")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+[% if not has_db %]
+_items = [{"id": 1, "name": "First item"}, {"id": 2, "name": "Second item"}]
+[% endif %]
+
+
+class ItemIn(BaseModel):
+    name: str
+
+
+@app.on_event("startup")
+def _startup():
+[% if has_db %]
+    init_db()
+[% else %]
+    return None
+[% endif %]
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/api/items")
+def list_items():
+[% if has_db %]
+    with SessionLocal() as session:
+        items = session.query(Item).order_by(Item.id).all()
+        return [{"id": i.id, "name": i.name} for i in items]
+[% else %]
+    return _items
+[% endif %]
+
+
+@app.post("/api/items", status_code=201)
+def add_item(payload: ItemIn):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+[% if has_db %]
+    with SessionLocal() as session:
+        item = Item(name=name)
+        session.add(item)
+        session.commit()
+        return {"id": item.id, "name": item.name}
+[% else %]
+    new = {"id": len(_items) + 1, "name": name}
+    _items.append(new)
+    return new
+[% endif %]

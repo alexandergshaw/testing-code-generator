@@ -1,0 +1,7 @@
+import { createApp } from "vue";
+import App from "./App.vue";
+[% if styling == "plain" %]
+import "./styles.css";
+[% endif %]
+
+createApp(App).mount("#app");

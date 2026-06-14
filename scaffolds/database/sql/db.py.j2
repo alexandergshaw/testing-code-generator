@@ -1,0 +1,40 @@
+"""Database layer for [[ project_name ]] (SQLAlchemy 2.0)."""
+import os
+
+from sqlalchemy import Integer, String, create_engine
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    sessionmaker,
+)
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "[[ db_url ]]")
+[% if db_driver == "sqlite" %]
+connect_args = {"check_same_thread": False}
+[% else %]
+connect_args = {}
+[% endif %]
+
+engine = create_engine(DATABASE_URL, echo=False, future=True, connect_args=connect_args)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+
+
+def init_db() -> None:
+    """Create tables and seed a couple of rows on first run."""
+    Base.metadata.create_all(engine)
+    with SessionLocal() as session:
+        if session.query(Item).count() == 0:
+            session.add_all([Item(name="First item"), Item(name="Second item")])
+            session.commit()

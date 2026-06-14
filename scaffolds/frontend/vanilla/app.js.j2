@@ -1,0 +1,46 @@
+const API = [% if has_backend %]"[[ api_base_url ]]/api"[% else %]null[% endif %];
+let items = [% if has_backend %][][% else %][{ id: 1, name: "First item" }, { id: 2, name: "Second item" }][% endif %];
+
+const list = document.getElementById("items");
+const form = document.getElementById("add-form");
+const input = document.getElementById("name");
+
+function render() {
+  list.innerHTML = "";
+  for (const it of items) {
+    const li = document.createElement("li");
+[% if styling == "bootstrap" %]
+    li.className = "list-group-item";
+[% endif %]
+    li.textContent = it.name;
+    list.appendChild(li);
+  }
+}
+
+async function load() {
+  if (API) {
+    const res = await fetch(`${API}/items`);
+    items = await res.json();
+  }
+  render();
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = input.value.trim();
+  if (!name) return;
+  if (API) {
+    const res = await fetch(`${API}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    items.push(await res.json());
+  } else {
+    items.push({ id: items.length + 1, name });
+  }
+  input.value = "";
+  render();
+});
+
+load();

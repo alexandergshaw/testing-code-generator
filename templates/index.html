@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tech-Stack App Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <h1>Tech-Stack App Generator</h1>
+        <p class="lead">
+          Pick a stack and download a ready-to-run starter project as a zip.
+        </p>
+      </header>
+
+      <form id="gen-form" method="post" action="{{ url_for('generate') }}">
+        <label class="field">
+          <span class="field-label">Project name</span>
+          <input
+            type="text"
+            name="project_name"
+            value="{{ project_name }}"
+            placeholder="my-app"
+            autocomplete="off"
+          />
+        </label>
+
+        {% for axis in axes %}
+        <fieldset class="axis">
+          <legend>{{ axis_labels[axis] }}</legend>
+          <div class="options">
+            {% for opt in options[axis] %}
+            <label class="option">
+              <input
+                type="radio"
+                name="{{ axis }}"
+                value="{{ opt.id }}"
+                {% if selected[axis] == opt.id %}checked{% endif %}
+              />
+              <span class="option-body">
+                <span class="option-name">{{ opt.label }}</span>
+                <span class="option-summary">{{ opt.summary }}</span>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        {% endfor %}
+
+        <p id="error" class="error" {% if not error %}hidden{% endif %}>
+          {{ error or "" }}
+        </p>
+
+        <button id="submit" type="submit" class="primary">Download .zip</button>
+      </form>
+    </main>
+
+    <script id="constraints" type="application/json">{{ constraints_json | safe }}</script>
+    <script src="{{ url_for('static', filename='js/form.js') }}"></script>
+  </body>
+</html>
