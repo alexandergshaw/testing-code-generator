@@ -8,7 +8,7 @@ import base64
 import json
 
 from .errors import InvalidSelection
-from .registry import AXES
+from .registry import AXES, CORE_AXES, axis_default
 
 CONFIG_VERSION = 1
 
@@ -18,7 +18,7 @@ def to_config(project_name: str, selection: dict, addons, schema) -> dict:
     return {
         "version": CONFIG_VERSION,
         "project_name": project_name,
-        "stack": {axis: selection[axis] for axis in AXES},
+        "stack": {axis: selection.get(axis, axis_default(axis)) for axis in AXES},
         "addons": sorted(dict.fromkeys(addons)),
         "schema": list(schema),
     }
@@ -34,10 +34,13 @@ def from_config(config: dict):
             f"Unsupported config version: {config.get('version')!r}."
         )
     stack = config.get("stack")
-    if not isinstance(stack, dict) or any(axis not in stack for axis in AXES):
-        raise InvalidSelection("Config 'stack' must include all four axes.")
+    if not isinstance(stack, dict) or any(axis not in stack for axis in CORE_AXES):
+        raise InvalidSelection(
+            "Config 'stack' must include backend, frontend, database, styling."
+        )
 
-    selection = {axis: stack[axis] for axis in AXES}
+    # Extension axes (auth, ...) default when an older config omits them.
+    selection = {axis: stack.get(axis, axis_default(axis)) for axis in AXES}
     addons = config.get("addons", [])
     schema = config.get("schema", [])
     if not isinstance(addons, list) or not isinstance(schema, list):

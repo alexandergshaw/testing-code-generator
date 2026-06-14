@@ -13,9 +13,9 @@ from .project_env import SCAFFOLDS_DIR, build_project_env
 from .registry import (
     ADDONS,
     AXES,
-    CONSTRAINTS,
     OPTIONS,
     addon_applies,
+    axis_default,
     get_addon,
     get_module,
 )
@@ -34,9 +34,12 @@ __all__ = ["InvalidSelection", "compose", "validate", "slugify", "build_context"
 # Validation
 # --------------------------------------------------------------------------- #
 def validate(selection: dict[str, str]) -> None:
-    """Check a selection against the registry and compatibility rules.
+    """Check a selection against the registry and capability tags.
 
-    Raises ``InvalidSelection`` with a human-readable message on the first
+    Each option declares ``provides``/``requires`` tags; a selection is valid
+    when every selected option's required tags are provided by the rest of the
+    selection, plus the structural rule that at least one runnable component
+    (backend or frontend) is chosen. Raises ``InvalidSelection`` on the first
     problem found.
     """
     for axis in AXES:
@@ -48,18 +51,17 @@ def validate(selection: dict[str, str]) -> None:
                 f"Unknown {axis} option: {selection[axis]!r}."
             )
 
-    for rule in CONSTRAINTS:
-        when = rule["when"]
-        if selection[when["axis"]] not in when["values"]:
-            continue
-        if "require" in rule:
-            req = rule["require"]
-            if selection[req["axis"]] not in req["values"]:
-                raise InvalidSelection(rule["message"])
-        if "forbid" in rule:
-            forbid = rule["forbid"]
-            if selection[forbid["axis"]] in forbid["values"]:
-                raise InvalidSelection(rule["message"])
+    mods = [get_module(axis, selection[axis]) for axis in AXES]
+    provided: set[str] = set().union(*(m.provides for m in mods)) if mods else set()
+    for mod in mods:
+        for tag in mod.requires:
+            if tag not in provided:
+                raise InvalidSelection(
+                    mod.requires_msg
+                    or f"{mod.label} isn't compatible with the rest of the stack."
+                )
+    if "backend" not in provided and "frontend" not in provided:
+        raise InvalidSelection("Pick at least a backend or a frontend — not neither.")
 
 
 def resolve_addons(addons, selection: dict) -> list:
@@ -105,6 +107,10 @@ def build_context(
     has_db = database != "none"
     spa = frontend in ("react", "vue")
     two_dirs = has_backend and has_frontend
+    # The backend's language drives manifest synthesis and per-language templates.
+    backend_lang = (
+        get_module("backend", backend).context.get("lang", "") if has_backend else ""
+    )
 
     ctx = {
         "project_name": project_name or "my-app",
@@ -117,8 +123,9 @@ def build_context(
         "has_frontend": has_frontend,
         "has_db": has_db,
         "spa": spa,
-        "python_backend": backend in ("flask", "fastapi"),
-        "node_backend": backend == "express",
+        "backend_lang": backend_lang,
+        "python_backend": backend_lang == "python",
+        "node_backend": backend_lang == "node",
         "backend_dir": "backend" if two_dirs else "",
         "frontend_dir": "frontend" if two_dirs else "",
         "backend_port": BACKEND_PORT,
@@ -138,6 +145,11 @@ def build_context(
     ctx["addons"] = selected_addons
     for mod in ADDONS:
         ctx[f"addon_{mod.id}"] = mod.id in selected_addons
+
+    # Expose every axis selection generically (so new axes like `auth` are
+    # available to templates without touching this function).
+    for axis in AXES:
+        ctx.setdefault(axis, selection.get(axis, axis_default(axis)))
 
     # Merge per-module static render vars (e.g. db_url, db_driver).
     for axis in AXES:
@@ -227,26 +239,44 @@ def _package_json(name: str, modules, ctx_extra: dict) -> bytes:
     return (json.dumps(pkg, indent=2) + "\n").encode("utf-8")
 
 
+def _go_mod(module_name: str, requires) -> bytes:
+    """Render a minimal go.mod. ``requires`` is an iterable of (path, version)."""
+    lines = [f"module {module_name}", "", "go 1.22"]
+    requires = sorted(set(requires))
+    if requires:
+        lines += ["", "require ("] + [f"\t{p} {v}" for p, v in requires] + [")"]
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def _build_manifests(selection: dict, ctx: dict, tree: dict, addon_mods=()) -> None:
     slug = ctx["project_slug"]
     backend_mod = get_module("backend", selection["backend"])
-    db_mod = get_module("database", selection["database"])
     frontend_mod = get_module("frontend", selection["frontend"])
     addon_mods = list(addon_mods)
+    backend_dir = ctx["backend_dir"]
+    # Every backend-affecting axis (data, auth, api) can contribute deps.
+    side_mods = [get_module(axis, selection[axis]) for axis in ("database", "auth", "api")]
+    backend_part = [backend_mod, *side_mods, *addon_mods]
 
-    # Backend manifest. Add-on Python deps fold into requirements.txt; add-on npm
-    # deps fold into whichever package.json exists (their empty halves no-op).
-    if ctx["python_backend"]:
-        reqs = set(backend_mod.requirements) | set(db_mod.requirements)
-        for mod in addon_mods:
+    # Backend manifest, keyed by the backend's language. Add-on deps fold in via
+    # each module's language-appropriate dependency fields (empty halves no-op).
+    lang = ctx["backend_lang"]
+    if lang == "python":
+        reqs = set()
+        for mod in backend_part:
             reqs |= set(mod.requirements)
-        tree[_join(slug, ctx["backend_dir"], "requirements.txt")] = (
+        tree[_join(slug, backend_dir, "requirements.txt")] = (
             "\n".join(sorted(reqs)) + "\n"
         ).encode("utf-8")
-    elif ctx["node_backend"]:
-        tree[_join(slug, ctx["backend_dir"], "package.json")] = _package_json(
-            f"{slug}-backend", [backend_mod, *addon_mods], ctx
+    elif lang == "node":
+        tree[_join(slug, backend_dir, "package.json")] = _package_json(
+            f"{slug}-backend", [backend_mod, *side_mods, *addon_mods], ctx
         )
+    elif lang == "go":
+        go_req = set()
+        for mod in backend_part:
+            go_req |= set(mod.context.get("go_require", ()))
+        tree[_join(slug, backend_dir, "go.mod")] = _go_mod(slug, go_req)
 
     # Frontend manifest (SPA only).
     if ctx["spa"]:
@@ -328,6 +358,9 @@ def compose(
     ``schema`` is the raw list of entity dicts (empty → default ``Item`` demo);
     ``addons`` is the list of selected add-on ids.
     """
+    # Fill any axis the caller omitted with its default (keeps older 4-axis
+    # callers and presets working as new axes are added).
+    selection = {**{axis: axis_default(axis) for axis in AXES}, **selection}
     validate(selection)
     validate_schema(schema, selection)
     addon_mods = resolve_addons(addons, selection)

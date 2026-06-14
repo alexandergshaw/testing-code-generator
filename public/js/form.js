@@ -1,7 +1,8 @@
-// Live compatibility checking for the stack picker. CONSTRAINTS / ADDONS_META
+// Live compatibility checking for the stack picker. MODULE_TAGS / ADDONS_META
 // are the same data the server validates against, embedded as JSON so the two
-// never drift.
-const CONSTRAINTS = JSON.parse(document.getElementById("constraints").textContent);
+// never drift. Compatibility is decided by capability tags: a selection is valid
+// when every option's `requires` tags are provided by the rest of the selection.
+const MODULE_TAGS = JSON.parse(document.getElementById("module-tags").textContent);
 const ADDONS_META = JSON.parse(document.getElementById("addons-meta").textContent);
 
 const form = document.getElementById("gen-form");
@@ -17,16 +18,29 @@ function currentSelection() {
   return sel;
 }
 
+function providedTags(selection) {
+  const set = new Set();
+  for (const axis in selection) {
+    const meta = MODULE_TAGS[axis] && MODULE_TAGS[axis][selection[axis]];
+    if (meta) for (const tag of meta.provides) set.add(tag);
+  }
+  return set;
+}
+
 // Returns an error message for an invalid selection, or null if it's fine.
 function check(selection) {
-  for (const rule of CONSTRAINTS) {
-    if (!rule.when.values.includes(selection[rule.when.axis])) continue;
-    if (rule.require && !rule.require.values.includes(selection[rule.require.axis])) {
-      return rule.message;
+  const provided = providedTags(selection);
+  for (const axis in selection) {
+    const meta = MODULE_TAGS[axis] && MODULE_TAGS[axis][selection[axis]];
+    if (!meta) continue;
+    for (const tag of meta.requires) {
+      if (!provided.has(tag)) {
+        return meta.msg || "That option isn't compatible with the rest of the stack.";
+      }
     }
-    if (rule.forbid && rule.forbid.values.includes(selection[rule.forbid.axis])) {
-      return rule.message;
-    }
+  }
+  if (!provided.has("backend") && !provided.has("frontend")) {
+    return "Pick at least a backend or a frontend — not neither.";
   }
   return null;
 }

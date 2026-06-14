@@ -10,7 +10,7 @@ from flask import Flask, abort, render_template, request, send_file
 
 from generator import preset
 from generator.composer import InvalidSelection, compose, slugify
-from generator.registry import ADDONS, AXES, AXIS_LABELS, CONSTRAINTS, OPTIONS
+from generator.registry import ADDONS, AXES, AXIS_LABELS, OPTIONS, module_tags
 from generator.schema import FIELD_TYPES
 from generator.zipper import to_zip
 
@@ -30,7 +30,7 @@ ADDONS_META = [
 app = Flask(__name__, static_folder="public", static_url_path="")
 
 DEFAULTS = {"backend": "flask", "frontend": "vanilla",
-            "database": "none", "styling": "plain"}
+            "database": "none", "styling": "plain", "auth": "none", "api": "rest"}
 
 
 def _render(selected, project_name="my-app", error=None, addons=(), schema=(), status=200):
@@ -45,7 +45,7 @@ def _render(selected, project_name="my-app", error=None, addons=(), schema=(), s
         schema_json=json.dumps(list(schema)),
         project_name=project_name,
         error=error,
-        constraints_json=json.dumps(CONSTRAINTS),
+        module_tags_json=json.dumps(module_tags()),
         addons_meta_json=json.dumps(ADDONS_META),
         field_types_json=json.dumps(list(FIELD_TYPES)),
     )
@@ -76,7 +76,9 @@ def index():
 
 @app.post("/generate")
 def generate():
-    selection = {axis: request.form.get(axis, "") for axis in AXES}
+    # Only axes the form actually sent; the composer fills any omitted axis with
+    # its default (so new axes don't break partial posts).
+    selection = {axis: request.form[axis] for axis in AXES if request.form.get(axis)}
     project_name = request.form.get("project_name", "").strip()
     addons = request.form.getlist("addons")
     schema = _parse_schema(request.form.get("schema", ""))

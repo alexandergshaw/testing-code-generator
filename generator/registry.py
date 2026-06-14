@@ -1,8 +1,11 @@
 """The catalogue of stack options and the compatibility rules between them.
 
-This module is pure data + a couple of small helpers. Both the server-side
-validator (``composer.validate``) and the browser form (``static/js/form.js``,
-fed via the index template) consume ``CONSTRAINTS`` so the two never drift.
+This module is pure data + a couple of small helpers. Compatibility is decided
+by capability **tags**: each option ``provides`` some tags and ``requires``
+others, and a selection is valid when every option's requirements are provided
+by the rest of the selection. Both the server-side validator
+(``composer.validate``) and the browser form (``public/js/form.js``, fed
+``module_tags()`` via the index template) use the same tags so they never drift.
 
 Composition semantics (kept deliberately uniform so every module is independent):
 
@@ -39,6 +42,16 @@ class Module:
     # npm runtime/dev dependencies as (name, version) pairs.
     npm: tuple[tuple[str, str], ...] = ()
     npm_dev: tuple[tuple[str, str], ...] = ()
+    # Capability tags this option contributes (provides) and depends on
+    # (requires). Compatibility is decided by tag satisfaction, not hardcoded id
+    # lists, so the catalogue can grow without editing a central rules table.
+    # Common tags: backend / frontend, lang:<x>, runtime:<x>, framework:<x>,
+    # kind:spa|meta, engine:<x>. Left empty -> sensible defaults are derived
+    # from the axis + context["lang"] (see _apply_default_tags).
+    provides: frozenset[str] = frozenset()
+    requires: tuple[str, ...] = ()
+    # Message shown when a `requires` tag is unmet.
+    requires_msg: str = ""
     # Extra render context and metadata (npm scripts, run commands, ...).
     context: dict = field(default_factory=dict)
 
@@ -79,6 +92,14 @@ _BACKENDS = [
                  "lang": "node",
                  "npm_scripts": {"start": "node server.js",
                                  "dev": "node --watch server.js"}},
+    ),
+    Module(
+        id="nethttp",
+        label="Go (net/http)",
+        axis="backend",
+        summary="Go standard-library JSON API (in-memory store).",
+        src="backend/nethttp",
+        context={"run": ["go run ."], "lang": "go"},
     ),
     Module(id="none", label="No backend", axis="backend",
            summary="Front-end only; uses mock data."),
@@ -133,7 +154,8 @@ _FRONTENDS = [
 # --------------------------------------------------------------------------- #
 _DATABASES = [
     Module(id="none", label="No database", axis="database",
-           summary="In-memory sample data."),
+           summary="In-memory sample data.",
+           provides=frozenset({"in-memory"})),
     Module(
         id="sqlite",
         label="SQLite",
@@ -141,6 +163,9 @@ _DATABASES = [
         summary="File-backed SQLite via SQLAlchemy.",
         src="database/sql",
         requirements=("SQLAlchemy>=2.0",),
+        provides=frozenset({"has-db", "engine:sqlite"}),
+        requires=("lang:python",),
+        requires_msg="A database needs a Python backend (Flask or FastAPI).",
         context={"db_url": "sqlite:///app.db", "db_driver": "sqlite"},
     ),
     Module(
@@ -150,6 +175,9 @@ _DATABASES = [
         summary="PostgreSQL via SQLAlchemy (set DATABASE_URL).",
         src="database/sql",
         requirements=("SQLAlchemy>=2.0", "psycopg2-binary>=2.9"),
+        provides=frozenset({"has-db", "engine:postgres"}),
+        requires=("lang:python",),
+        requires_msg="A database needs a Python backend (Flask or FastAPI).",
         context={"db_url": "postgresql+psycopg2://postgres:postgres@localhost:5432/app",
                  "db_driver": "postgres"},
     ),
@@ -169,13 +197,50 @@ _STYLING = [
 ]
 
 
-AXES = ("backend", "frontend", "database", "styling")
+# --------------------------------------------------------------------------- #
+# Authentication (context-only; backends implement it via the `auth` flag)
+# --------------------------------------------------------------------------- #
+_AUTH = [
+    Module(id="none", label="No auth", axis="auth",
+           summary="No authentication."),
+    Module(
+        id="jwt", label="JWT", axis="auth",
+        summary="Stateless HS256 JWT — POST /api/login + protected GET /api/me.",
+        requires=("backend",),
+        requires_msg="Authentication needs a backend.",
+    ),
+]
+
+
+# --------------------------------------------------------------------------- #
+# API style (REST default; GraphQL adds a /graphql endpoint)
+# --------------------------------------------------------------------------- #
+_API = [
+    Module(id="rest", label="REST", axis="api",
+           summary="Plain JSON REST endpoints."),
+    Module(
+        id="graphql", label="GraphQL", axis="api",
+        summary="Adds a Strawberry /graphql endpoint alongside REST.",
+        requirements=("strawberry-graphql>=0.230",),
+        # v1: Python backend, in-memory store (no DB-backed resolvers yet).
+        requires=("lang:python", "in-memory"),
+        requires_msg="GraphQL (this version) needs a Python backend and no database.",
+    ),
+]
+
+
+# Core axes are always present in a config; extension axes default to their
+# first (no-op) option, so older presets and 4-axis callers keep working.
+CORE_AXES = ("backend", "frontend", "database", "styling")
+AXES = ("backend", "frontend", "database", "styling", "auth", "api")
 
 AXIS_LABELS = {
     "backend": "Backend framework",
     "frontend": "Frontend framework",
     "database": "Database / ORM",
     "styling": "Styling",
+    "auth": "Authentication",
+    "api": "API style",
 }
 
 OPTIONS: dict[str, list[Module]] = {
@@ -183,7 +248,14 @@ OPTIONS: dict[str, list[Module]] = {
     "frontend": _FRONTENDS,
     "database": _DATABASES,
     "styling": _STYLING,
+    "auth": _AUTH,
+    "api": _API,
 }
+
+
+def axis_default(axis: str) -> str:
+    """The default (first) option id for an axis."""
+    return OPTIONS[axis][0].id
 
 # Flat lookup: (axis, id) -> Module
 _INDEX = {(m.axis, m.id): m for mods in OPTIONS.values() for m in mods}
@@ -197,28 +269,48 @@ def get_module(axis: str, option_id: str) -> Module:
 
 
 # --------------------------------------------------------------------------- #
-# Compatibility rules — single source of truth for server + browser
+# Capability tags — single source of truth for server + browser compatibility
 # --------------------------------------------------------------------------- #
-#   when:    this rule applies when selection[when.axis] is in when.values
-#   require: then selection[require.axis] MUST be in require.values
-#   forbid:  then selection[forbid.axis] must NOT be in forbid.values
-CONSTRAINTS = [
-    {
-        "when": {"axis": "backend", "values": ["none"]},
-        "require": {"axis": "database", "values": ["none"]},
-        "message": "A project with no backend can't include a database.",
-    },
-    {
-        "when": {"axis": "backend", "values": ["none"]},
-        "forbid": {"axis": "frontend", "values": ["none"]},
-        "message": "Pick at least a backend or a frontend — not neither.",
-    },
-    {
-        "when": {"axis": "database", "values": ["sqlite", "postgres"]},
-        "require": {"axis": "backend", "values": ["flask", "fastapi"]},
-        "message": "A database needs a Python backend (Flask or FastAPI).",
-    },
-]
+def _apply_default_tags() -> None:
+    """Fill in ``provides`` for modules that didn't set tags explicitly.
+
+    Backends provide ``backend`` + their language; frontends provide
+    ``frontend`` + ``framework:<id>`` (+ ``runtime:node`` when they build with
+    npm). Data layers and framework-specific styling set their tags inline.
+    """
+    for mod in _BACKENDS:
+        if mod.id == "none" or mod.provides:
+            continue
+        lang = mod.context.get("lang", "")
+        tags = {"backend"}
+        if lang:
+            tags |= {f"lang:{lang}", f"runtime:{lang}"}
+        mod.provides = frozenset(tags)
+    for mod in _FRONTENDS:
+        if mod.id == "none" or mod.provides:
+            continue
+        tags = {"frontend", f"framework:{mod.id}", "kind:spa"}
+        if mod.npm or mod.npm_dev:
+            tags.add("runtime:node")
+        mod.provides = frozenset(tags)
+
+
+_apply_default_tags()
+
+
+def module_tags() -> dict:
+    """Per-option tag metadata for the browser (mirrors the server validator)."""
+    return {
+        axis: {
+            mod.id: {
+                "provides": sorted(mod.provides),
+                "requires": list(mod.requires),
+                "msg": mod.requires_msg,
+            }
+            for mod in OPTIONS[axis]
+        }
+        for axis in AXES
+    }
 
 
 # --------------------------------------------------------------------------- #

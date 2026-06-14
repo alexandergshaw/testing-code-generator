@@ -43,10 +43,18 @@ vercel dev      # run the serverless setup locally
 
 | Axis      | Options                                            |
 | --------- | -------------------------------------------------- |
-| Backend   | Flask, FastAPI, Express, None                      |
+| Backend   | Flask, FastAPI, Express, Go (net/http), None       |
 | Frontend  | Vanilla JS, React (Vite), Vue (Vite), None         |
 | Database  | None, SQLite, PostgreSQL (Python backends only)    |
 | Styling   | Plain CSS, Bootstrap (CDN), Tailwind (Play CDN)    |
+| Auth      | None, JWT (stateless HS256: `/api/login` + `/api/me`) |
+| API style | REST, GraphQL (Strawberry `/graphql`, Python + in-memory) |
+
+Compatibility between options is decided by **capability tags** (`lang:python`,
+`framework:react`, `engine:postgres`, …): each option declares what it
+`provides` and `requires`, so the catalogue can grow across languages without a
+central rules table. The same tags drive the live browser gating and the server
+validator.
 
 With a backend **and** a frontend you get a `backend/` + `frontend/` layout;
 otherwise the single component sits at the project root. Each zip includes a

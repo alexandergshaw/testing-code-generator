@@ -1,4 +1,5 @@
 """Render generated apps from a custom multi-entity schema and compile them."""
+import pathlib
 import py_compile
 import shutil
 import subprocess
@@ -82,6 +83,26 @@ def test_express_custom_schema_renders(frontend, tmp_path):
         path.write_bytes(server_bytes)
         result = subprocess.run(
             [node, "--check", str(path)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
+
+
+def test_go_custom_schema_builds(tmp_path):
+    selection = {"backend": "nethttp", "frontend": "none",
+                 "database": "none", "styling": "plain"}
+    tree = compose(selection, "Shop", schema=SCHEMA)
+    main_go = next(tree[p] for p in tree if p.endswith("main.go")).decode()
+    for struct in ("type Product struct", "type Customer struct"):
+        assert struct in main_go
+    assert "/api/products" in main_go and "/api/customers" in main_go
+
+    go = shutil.which("go")
+    if go:
+        for path, data in tree.items():
+            if path.endswith(("main.go", "go.mod")):
+                (tmp_path / pathlib.Path(path).name).write_bytes(data)
+        result = subprocess.run(
+            [go, "build", "./..."], cwd=tmp_path, capture_output=True, text=True
         )
         assert result.returncode == 0, result.stderr
 

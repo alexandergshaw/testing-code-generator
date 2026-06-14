@@ -1,4 +1,10 @@
-"""Exhaustively exercise the composer across every stack combination."""
+"""Exercise the composer across the stack matrix via pairwise coverage.
+
+Rendering every valid combination explodes as axes multiply, so the expensive
+render+compile test runs over a small **pairwise** subset (every satisfiable
+option-pair appears in at least one combo); validity bookkeeping still uses the
+full product, which is cheap.
+"""
 import itertools
 import json
 import py_compile
@@ -8,10 +14,9 @@ import pytest
 from generator.composer import InvalidSelection, compose, slugify, validate
 from generator.registry import AXES, OPTIONS
 
-ALL_COMBOS = [
-    dict(zip(AXES, values))
-    for values in itertools.product(*([m.id for m in OPTIONS[a]] for a in AXES))
-]
+from tests.pairwise import all_valid_combos, pairwise_combos
+
+_OPTION_IDS = {axis: [m.id for m in OPTIONS[axis]] for axis in AXES}
 
 
 def _is_valid(selection: dict) -> bool:
@@ -22,8 +27,8 @@ def _is_valid(selection: dict) -> bool:
         return False
 
 
-VALID = [c for c in ALL_COMBOS if _is_valid(c)]
-INVALID = [c for c in ALL_COMBOS if not _is_valid(c)]
+VALID = all_valid_combos(AXES, _OPTION_IDS, _is_valid)
+PAIRWISE = pairwise_combos(AXES, _OPTION_IDS, _is_valid)
 
 
 def _ids(combos):
@@ -32,11 +37,18 @@ def _ids(combos):
 
 def test_combo_split_is_sane():
     assert VALID, "expected at least one valid combination"
-    assert INVALID, "expected at least one invalid combination"
-    assert len(VALID) + len(INVALID) == len(ALL_COMBOS)
+    # Pairwise is a strict, much smaller subset of the valid combinations.
+    assert 0 < len(PAIRWISE) <= len(VALID)
 
 
-@pytest.mark.parametrize("selection", VALID, ids=_ids(VALID))
+def test_pairwise_covers_every_option():
+    seen = {(axis, value) for sel in PAIRWISE for axis, value in sel.items()}
+    for axis in AXES:
+        for mod in OPTIONS[axis]:
+            assert (axis, mod.id) in seen, f"{axis}={mod.id} not covered by pairwise set"
+
+
+@pytest.mark.parametrize("selection", PAIRWISE, ids=_ids(PAIRWISE))
 def test_valid_combo_renders_runnable_tree(selection, tmp_path):
     tree = compose(selection, "Demo App")
     assert tree, "composer returned an empty tree"
@@ -57,10 +69,17 @@ def test_valid_combo_renders_runnable_tree(selection, tmp_path):
             json.loads(data)
 
 
-@pytest.mark.parametrize("selection", INVALID, ids=_ids(INVALID))
-def test_invalid_combo_is_rejected(selection):
-    with pytest.raises(InvalidSelection):
-        compose(selection, "Demo App")
+def test_invalid_combos_rejected_by_compose():
+    """Every full combo the validator rejects is also rejected by compose()."""
+    checked = 0
+    for values in itertools.product(*(_OPTION_IDS[a] for a in AXES)):
+        selection = dict(zip(AXES, values))
+        if _is_valid(selection):
+            continue
+        checked += 1
+        with pytest.raises(InvalidSelection):
+            compose(selection, "Demo App")
+    assert checked, "expected at least one invalid combination"
 
 
 @pytest.mark.parametrize(

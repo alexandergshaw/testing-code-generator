@@ -14,7 +14,7 @@ CONFIG = {
     "version": 1,
     "project_name": "Shop",
     "stack": {"backend": "flask", "frontend": "vanilla",
-              "database": "sqlite", "styling": "bootstrap"},
+              "database": "sqlite", "styling": "bootstrap", "auth": "none", "api": "rest"},
     "addons": ["docker", "tests"],
     "schema": [{"name": "Product", "fields": [{"name": "title", "type": "string"}]}],
 }
