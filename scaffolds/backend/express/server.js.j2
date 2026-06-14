@@ -6,22 +6,49 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-let items = [
-  { id: 1, name: "First item" },
-  { id: 2, name: "Second item" },
-];
+[% for entity in entities %]
+let [[ entity.plural ]] = [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]];
+let [[ entity.var ]]Seq = [% if is_default_schema %]2[% else %]0[% endif %];
+[% endfor %]
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+[% for entity in entities %]
 
-app.get("/api/items", (req, res) => res.json(items));
+// ---- [[ entity.class_name ]] ----
+app.get("[[ entity.route ]]", (req, res) => res.json([[ entity.plural ]]));
 
-app.post("/api/items", (req, res) => {
-  const name = (req.body && req.body.name ? String(req.body.name) : "").trim();
-  if (!name) return res.status(400).json({ error: "name is required" });
-  const item = { id: items.length + 1, name };
-  items.push(item);
+app.post("[[ entity.route ]]", (req, res) => {
+  const body = req.body || {};
+  const item = { id: ++[[ entity.var ]]Seq[% for f in entity.fields %], [[ f.name ]]: body["[[ f.name ]]"][% endfor %] };
+  [[ entity.plural ]].push(item);
   res.status(201).json(item);
 });
+
+app.get("[[ entity.route ]]/:id", (req, res) => {
+  const item = [[ entity.plural ]].find((x) => x.id === Number(req.params.id));
+  if (!item) return res.status(404).json({ error: "not found" });
+  res.json(item);
+});
+
+app.put("[[ entity.route ]]/:id", (req, res) => {
+  const item = [[ entity.plural ]].find((x) => x.id === Number(req.params.id));
+  if (!item) return res.status(404).json({ error: "not found" });
+  const body = req.body || {};
+[% for f in entity.fields %]
+  if ("[[ f.name ]]" in body) item.[[ f.name ]] = body["[[ f.name ]]"];
+[% endfor %]
+  res.json(item);
+});
+
+app.delete("[[ entity.route ]]/:id", (req, res) => {
+  const before = [[ entity.plural ]].length;
+  [[ entity.plural ]] = [[ entity.plural ]].filter((x) => x.id !== Number(req.params.id));
+  if ([[ entity.plural ]].length === before) {
+    return res.status(404).json({ error: "not found" });
+  }
+  res.status(204).end();
+});
+[% endfor %]
 
 const PORT = [[ backend_port ]];
 app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));

@@ -48,13 +48,14 @@ def test_explicit_plural_is_respected():
     assert ent.route == "/api/people"
 
 
-def test_custom_schema_requires_python_backend():
+def test_custom_schema_requires_backend():
     schema = [{"name": "Product", "fields": [{"name": "name", "type": "string"}]}]
-    with pytest.raises(InvalidSelection):
-        validate_schema(schema, {**PY, "backend": "express"})
+    # Only a backend-less project is rejected; any backend is accepted.
     with pytest.raises(InvalidSelection):
         validate_schema(schema, {**PY, "backend": "none"})
-    validate_schema(schema, PY)  # flask is fine
+    validate_schema(schema, PY)  # flask
+    validate_schema(schema, {**PY, "backend": "fastapi"})
+    validate_schema(schema, {**PY, "backend": "express"})
 
 
 @pytest.mark.parametrize(

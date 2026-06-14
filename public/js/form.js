@@ -62,8 +62,8 @@ function refresh() {
   }
 
   let message = check(selection);
-  if (!message && hasCustomSchema() && !["flask", "fastapi"].includes(selection.backend)) {
-    message = "Custom data entities need a Python backend (Flask or FastAPI).";
+  if (!message && hasCustomSchema() && selection.backend === "none") {
+    message = "Custom data entities need a backend.";
   }
   errorEl.textContent = message || "";
   errorEl.hidden = !message;

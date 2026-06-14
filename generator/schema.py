@@ -157,10 +157,8 @@ def validate_schema(raw, selection: dict) -> None:
     if not raw:
         return  # default schema is always valid
 
-    if selection.get("backend") not in ("flask", "fastapi"):
-        raise InvalidSelection(
-            "Custom data entities need a Python backend (Flask or FastAPI)."
-        )
+    if selection.get("backend") == "none":
+        raise InvalidSelection("Custom data entities need a backend.")
 
     seen_entities = set()
     for ent in raw:

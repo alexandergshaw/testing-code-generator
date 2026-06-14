@@ -63,7 +63,8 @@ LLMs involved:
   integer, float, boolean, datetime) in the form. The generator emits SQLAlchemy
   models, full CRUD endpoints, and a list/create/delete UI per entity by looping
   templates over your schema. Leave it empty for a sample `Item`. *Custom
-  entities require a Python backend (Flask or FastAPI).*
+  entities require a backend (Flask/FastAPI persist via SQLAlchemy; Express uses
+  an in-memory store).*
 - **Add-ons.** Multi-select extras layered into the build: **Docker**
   (Dockerfiles + Compose, with a Postgres service when selected), **Tests**
   (pytest against the API), **CI** (GitHub Actions), **Lint** (Ruff / Prettier),

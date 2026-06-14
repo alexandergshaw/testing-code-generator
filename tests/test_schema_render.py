@@ -1,5 +1,7 @@
 """Render generated apps from a custom multi-entity schema and compile them."""
 import py_compile
+import shutil
+import subprocess
 
 import pytest
 
@@ -61,6 +63,27 @@ def test_unquoted_type_annotations(tmp_path):
     db = next(tree[p] for p in tree if p.endswith("db.py")).decode()
     assert "Optional[float]" in main and "Optional['float']" not in main
     assert "Mapped[str]" in db and "Mapped['str']" not in db
+
+
+@pytest.mark.parametrize("frontend", ["none", "react"])
+def test_express_custom_schema_renders(frontend, tmp_path):
+    selection = {"backend": "express", "frontend": frontend,
+                 "database": "none", "styling": "plain"}
+    tree = compose(selection, "Shop", schema=SCHEMA)
+    server_bytes = next(tree[p] for p in tree if p.endswith("server.js"))
+    server = server_bytes.decode()
+    for entity in ("products", "customers"):
+        assert f"/api/{entity}" in server
+        assert f"let {entity}" in server
+
+    node = shutil.which("node")
+    if node:
+        path = tmp_path / "server.js"
+        path.write_bytes(server_bytes)
+        result = subprocess.run(
+            [node, "--check", str(path)], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
 
 
 def test_no_seed_for_custom_schema(tmp_path):
