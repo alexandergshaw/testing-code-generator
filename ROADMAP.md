@@ -5,34 +5,38 @@ is the work queue + copy-paste recipes. Goal of the project: be *exhaustive* acr
 axes/options and languages, while **every generated combo actually runs**.
 
 ## Status snapshot
-- 7 axes, all tag-driven. 14 backends / 4 languages, 7 frontends. ~223 tests pass
+- 7 axes, all tag-driven. 14 backends / 4 languages, 7 frontends. ~267 tests pass
   (1 skipped = Ruby `ruby -c`, no local toolchain). Pairwise keeps the suite ~10s.
-- Node DB via the **repo seam**: Drizzle+SQLite **and** Drizzle+Postgres landed.
-  Backends are data-layer-agnostic, so new ORMs are a `repo.js` drop-in, not
-  per-backend edits. Postgres uses async postgres-js: `db.js` exposes a `ready`
-  promise (table create + seed) that `repo.js` awaits per call, so async setup
-  never races the first request without touching handlers. Docker addon now spins
-  up a `postgres:16` service for `drizzle-postgres` too (driver-aware DATABASE_URL).
+- **Node data story is DONE** via the **repo seam** (Objective #1 complete): Drizzle
+  (SQLite/Postgres/MySQL), Mongoose (Mongo), Prisma (SQLite/Postgres). Backends are
+  data-layer-agnostic, so each ORM is a pure `repo.js` drop-in — zero backend edits.
+  Async drivers (postgres-js/mysql2/mongoose) use a `ready` promise in `db.js`
+  (table create + seed) that `repo.js` awaits per call, so async setup never races
+  the first request. Docker addon is **data-driven**: each server-DB module carries a
+  `docker` descriptor → `build_context` exposes `docker_db` → compose adds the right
+  service (postgres:16 / mysql:8 / mongo:7) with a driver-aware DATABASE_URL; file/
+  in-memory stores add none. Prisma wires `prisma generate` (postinstall) + `prisma
+  db push` (predev/prestart) via npm lifecycle scripts — no backend/composer edits.
 
 ## Objectives (priority order)
 
-### 1. Finish the Node data story — ride the repo seam (HIGH, live-verifiable)
-Backends already call the async `repo` API, so each new option is just a new data
-module under `scaffolds/database/<id>/` (schema/db/repo) + a registry entry. No
-backend edits. Follow the `database/drizzle` precedent.
-- **Drizzle + Postgres** (`drizzle-postgres`) — ✅ DONE. `scaffolds/database/drizzle-postgres/`
-  (pg-core schema + postgres-js `db.js` with a `ready` promise + async `repo.js`).
-  Registered with `engine:postgres`/`db:drizzle`/`lang:node` + `db_url` context;
-  docker-compose generalized to add a Postgres service for it. Tests in
-  `tests/test_node_db.py` (render + `node --check` both schema branches + compose).
-  Verified render + syntax here; live Postgres run is CI-only. **Use this as the
-  precedent for the async-driver ORMs below (Mongo/MySQL/Prisma).**
-- **Prisma** (`prisma-postgres`/`prisma-sqlite`): ships `schema.prisma` (generated from
-  entities) + a repo using `@prisma/client`. Note: needs `prisma generate` in the run
-  steps (`context["run"]`) — it downloads a query-engine binary, so it's *not* offline;
-  document that. Gate `requires=("lang:node",)`.
-- **MySQL** (Drizzle `mysql-core` + `mysql2`) and **MongoDB** (`mongoose`, schemaless
-  repo) — same drop-in shape, new `engine:` tags.
+### 1. ✅ DONE — Node data story (rode the repo seam)
+All six Node data layers shipped as `scaffolds/database/<id>/` drop-ins + registry
+entries, no backend edits. Tests in `tests/test_node_db.py` (render + `node --check`
+across 6 DBs × 4 backends, both seed branches, + docker-compose service per engine).
+Verified render + syntax here; live DB runs (servers + `prisma generate` network) are
+CI-only. New seam helpers added along the way: `Entity.camel` (Prisma client
+delegate), `Field.prisma` (Prisma field type), the `docker_db` context descriptor.
+- **Drizzle + Postgres** (`drizzle-postgres`), **Drizzle + MySQL** (`drizzle-mysql`,
+  no RETURNING → create re-reads by `insertId`, remove uses `affectedRows`),
+  **MongoDB** (`mongo`, Mongoose; ObjectId surfaced as a string `id`, invalid ids →
+  not-found), **Prisma** (`prisma-sqlite` literal `file:` url / `prisma-postgres`
+  `env("DATABASE_URL")`; one scaffold, two registry entries like `database/sql`).
+- **If extending:** the async-driver precedent is `database/drizzle-postgres`; the
+  "one scaffold serves two engines via context" precedent is `database/prisma`.
+- **Optional polish:** Drizzle+MySQL `boolean` reads back as tinyint via the driver
+  (drizzle casts it); a `mongo` auth/replica-set note for production; Prisma needs
+  network on install (engine download) — already documented in the option summary.
 
 ### 2. Django (Python, own ORM) (MED, live-verifiable, special-case)
 Django can't reuse the shared SQLAlchemy `db.py` — it has its own ORM + project

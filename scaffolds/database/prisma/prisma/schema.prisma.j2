@@ -1,0 +1,21 @@
+// Prisma schema — generated from the app's entities.
+// `prisma generate` (run on install) builds the client; `prisma db push`
+// (run before dev/start) creates the tables.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "[[ prisma_provider ]]"
+  url      = [[ prisma_url ]]
+}
+
+[% for entity in entities %]
+model [[ entity.class_name ]] {
+  id Int @id @default(autoincrement())
+[% for f in entity.fields %]
+  [[ f.name ]] [[ f.prisma ]]
+[% endfor %]
+}
+
+[% endfor %]

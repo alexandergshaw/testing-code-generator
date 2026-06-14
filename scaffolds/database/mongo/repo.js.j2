@@ -1,0 +1,49 @@
+// MongoDB (Mongoose) data layer — the same async repo API the in-memory store
+// implements, so the backend route handlers are identical whichever data layer is
+// chosen. Mongo's ObjectId is surfaced as a string `id` (the rest of the app
+// treats the id opaquely), invalid ids resolve to "not found", and `ready` is
+// awaited so queries never race the connection.
+const mongoose = require("mongoose");
+const { models, columns } = require("./schema");
+const { ready } = require("./db");
+
+function clean(table, data) {
+  const out = {};
+  for (const col of columns[table]) {
+    if (col in data) out[col] = data[col];
+  }
+  return out;
+}
+
+function shape(doc) {
+  if (!doc) return null;
+  const { _id, __v, ...rest } = doc;
+  return { id: String(_id), ...rest };
+}
+
+module.exports = {
+  async list(table) {
+    await ready;
+    return (await models[table].find().lean()).map(shape);
+  },
+  async create(table, data) {
+    await ready;
+    const doc = await models[table].create(clean(table, data));
+    return shape(doc.toObject());
+  },
+  async get(table, id) {
+    await ready;
+    if (!mongoose.isValidObjectId(id)) return null;
+    return shape(await models[table].findById(id).lean());
+  },
+  async update(table, id, data) {
+    await ready;
+    if (!mongoose.isValidObjectId(id)) return null;
+    return shape(await models[table].findByIdAndUpdate(id, clean(table, data), { new: true }).lean());
+  },
+  async remove(table, id) {
+    await ready;
+    if (!mongoose.isValidObjectId(id)) return false;
+    return (await models[table].findByIdAndDelete(id).lean()) !== null;
+  },
+};

@@ -157,12 +157,15 @@ def build_context(
     # package.json "packageManager" field for the chosen JS package manager.
     ctx["pkg_field"] = get_module("pkg", ctx["pkg"]).context.get("pm_field")
 
-    # Merge per-module static render vars (e.g. db_url, db_driver).
+    # Merge per-module static render vars (e.g. db_url, db_driver, prisma_*).
     for axis in AXES:
         mod = get_module(axis, selection[axis])
-        for key in ("db_url", "db_driver"):
+        for key in ("db_url", "db_driver", "prisma_provider", "prisma_url"):
             if key in mod.context:
                 ctx[key] = mod.context[key]
+    # Docker service descriptor for server-backed databases (file/in-memory
+    # stores leave this None, so the compose addon adds no extra service).
+    ctx["docker_db"] = get_module("database", database).context.get("docker")
     return ctx
 
 

@@ -1,0 +1,26 @@
+// Drizzle ORM schema (MySQL) — one table per entity.
+const { mysqlTable, int, double, boolean, text } = require("drizzle-orm/mysql-core");
+
+[% for entity in entities %]
+const [[ entity.var ]] = mysqlTable("[[ entity.table ]]", {
+  id: int("id").autoincrement().primaryKey(),
+[% for f in entity.fields %]
+  [[ f.name ]]: [% if f.type == "boolean" %]boolean("[[ f.name ]]")[% elif f.type == "integer" %]int("[[ f.name ]]")[% elif f.type == "float" %]double("[[ f.name ]]")[% else %]text("[[ f.name ]]")[% endif %],
+[% endfor %]
+});
+[% endfor %]
+
+// table lookup + column allow-lists, keyed by the API plural.
+const tables = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [[ entity.var ]],
+[% endfor %]
+};
+
+const columns = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [ [% for f in entity.fields %]"[[ f.name ]]"[% if not loop.last %], [% endif %][% endfor %]],
+[% endfor %]
+};
+
+module.exports = { tables, columns };

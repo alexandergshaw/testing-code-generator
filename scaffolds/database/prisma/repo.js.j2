@@ -1,0 +1,53 @@
+// Prisma data layer — the same async repo API the in-memory store implements, so
+// the backend route handlers are identical whichever data layer is chosen. Prisma
+// exposes one delegate per model (`prisma.product`); we key those by the API
+// plural. update/remove throw when the row is missing, so they map to null/false.
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+const models = {
+[% for entity in entities %]
+  [[ entity.plural ]]: prisma.[[ entity.camel ]],
+[% endfor %]
+};
+
+const columns = {
+[% for entity in entities %]
+  [[ entity.plural ]]: [ [% for f in entity.fields %]"[[ f.name ]]"[% if not loop.last %], [% endif %][% endfor %]],
+[% endfor %]
+};
+
+function clean(table, data) {
+  const out = {};
+  for (const col of columns[table]) {
+    if (col in data) out[col] = data[col];
+  }
+  return out;
+}
+
+module.exports = {
+  async list(table) {
+    return models[table].findMany();
+  },
+  async create(table, data) {
+    return models[table].create({ data: clean(table, data) });
+  },
+  async get(table, id) {
+    return models[table].findUnique({ where: { id: Number(id) } });
+  },
+  async update(table, id, data) {
+    try {
+      return await models[table].update({ where: { id: Number(id) }, data: clean(table, data) });
+    } catch {
+      return null;
+    }
+  },
+  async remove(table, id) {
+    try {
+      await models[table].delete({ where: { id: Number(id) } });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};

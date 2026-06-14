@@ -4,13 +4,9 @@ services:
     build: [[ backend_build ]]
     ports:
       - "[[ backend_port ]]:[[ backend_port ]]"
-[% if database == "postgres" or database == "drizzle-postgres" %]
+[% if docker_db %]
     environment:
-[% if backend_lang == "node" %]
-      DATABASE_URL: postgres://postgres:postgres@db:5432/app
-[% else %]
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/app
-[% endif %]
+      DATABASE_URL: [[ docker_db.url ]]
     depends_on:
       - db
 [% endif %]
@@ -21,12 +17,15 @@ services:
     ports:
       - "[[ frontend_port ]]:[% if spa %][[ frontend_port ]][% else %]80[% endif %]"
 [% endif %]
-[% if database == "postgres" or database == "drizzle-postgres" %]
+[% if docker_db %]
   db:
-    image: postgres:16
+    image: [[ docker_db.image ]]
+[% if docker_db.env %]
     environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: app
+[% for k, v in docker_db.env.items() %]
+      [[ k ]]: [[ v ]]
+[% endfor %]
+[% endif %]
     ports:
-      - "5432:5432"
+      - "[[ docker_db.port ]]:[[ docker_db.port ]]"
 [% endif %]

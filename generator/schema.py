@@ -78,6 +78,13 @@ class Field:
         return FIELD_TYPES[self.type]["ddl"]
 
     @property
+    def prisma(self) -> str:
+        """Prisma model field type, with ``?`` for optional fields."""
+        base = {"integer": "Int", "float": "Float", "boolean": "Boolean",
+                "datetime": "DateTime"}.get(self.type, "String")
+        return base if self.required else f"{base}?"
+
+    @property
     def pascal(self) -> str:
         """snake_case field name -> exported Go/struct identifier (``in_stock`` -> ``InStock``)."""
         return "".join(part[:1].upper() + part[1:] for part in self.name.split("_"))
@@ -106,6 +113,11 @@ class Entity:
     @property
     def var(self) -> str:
         return _snake(self.name)
+
+    @property
+    def camel(self) -> str:
+        """``ProductLine`` -> ``productLine`` (e.g. a Prisma client accessor)."""
+        return self.class_name[:1].lower() + self.class_name[1:]
 
     @property
     def table(self) -> str:

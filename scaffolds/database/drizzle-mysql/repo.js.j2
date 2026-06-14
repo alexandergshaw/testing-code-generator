@@ -1,0 +1,46 @@
+// Drizzle (MySQL / mysql2) data layer — the same async repo API the in-memory
+// store implements, so the backend route handlers are identical whichever data
+// layer is chosen. MySQL has no RETURNING clause, so create re-reads by the
+// driver's insertId and remove reports the driver's affectedRows. Every method
+// awaits `ready` first so table creation never races the first request.
+const { eq } = require("drizzle-orm");
+const { db, ready } = require("./db");
+const { tables, columns } = require("./schema");
+
+function clean(table, data) {
+  const out = {};
+  for (const col of columns[table]) {
+    if (col in data) out[col] = data[col];
+  }
+  return out;
+}
+
+module.exports = {
+  async list(table) {
+    await ready;
+    return db.select().from(tables[table]);
+  },
+  async create(table, data) {
+    await ready;
+    const [res] = await db.insert(tables[table]).values(clean(table, data));
+    return this.get(table, res.insertId);
+  },
+  async get(table, id) {
+    await ready;
+    const [row] = await db.select().from(tables[table]).where(eq(tables[table].id, Number(id)));
+    return row || null;
+  },
+  async update(table, id, data) {
+    await ready;
+    const patch = clean(table, data);
+    if (Object.keys(patch).length > 0) {
+      await db.update(tables[table]).set(patch).where(eq(tables[table].id, Number(id)));
+    }
+    return this.get(table, id);
+  },
+  async remove(table, id) {
+    await ready;
+    const [res] = await db.delete(tables[table]).where(eq(tables[table].id, Number(id)));
+    return res.affectedRows > 0;
+  },
+};

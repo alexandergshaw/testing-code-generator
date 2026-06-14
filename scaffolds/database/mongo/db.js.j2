@@ -1,0 +1,15 @@
+// MongoDB connection (Mongoose) + first-run seed. `ready` resolves once connected
+// (and seeded); the repo awaits it before every call so nothing races startup.
+const mongoose = require("mongoose");
+const { models } = require("./schema");
+
+const ready = (async () => {
+  await mongoose.connect(process.env.DATABASE_URL || "[[ db_url ]]");
+[% if is_default_schema %]
+  if ((await models.items.countDocuments()) === 0) {
+    await models.items.create([{ name: "First item" }, { name: "Second item" }]);
+  }
+[% endif %]
+})();
+
+module.exports = { ready };
