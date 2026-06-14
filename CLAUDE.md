@@ -2,9 +2,11 @@
 
 Deterministic **tech-stack app generator**: a Flask UI lets a user pick a stack
 (across 7 axes), define data entities, and download a ready-to-run app as a zip.
-**No LLMs** — everything is Jinja2 template composition. Core promise: **every
-generated combo actually runs.** Deployed on Vercel (single `app` in `app.py`,
-assets in `public/`, all generation in-memory).
+The same engine is exposed as a **JSON HTTP API** (`POST /api/generate` → zip) for
+other apps. **No LLMs** — everything is Jinja2 template composition. Core promise:
+**every generated combo actually runs.** Deployed on Vercel via `vercel.json`
+(`@vercel/python` builds `app.py`; `includeFiles` bundles `scaffolds/`+`templates/`
+— without it generation 500s in prod); all generation in-memory (`BytesIO`).
 
 > **Remaining work + step-by-step recipes live in [ROADMAP.md](ROADMAP.md).** Read it
 > before extending the catalog.
@@ -44,10 +46,16 @@ authored + structurally tested here; real compile/run is CI-only.
 - **`project_env.py`** — Jinja env for scaffolds: **delimiters are `[[ ]]` / `[% %]`
   / `[# #]`**, `trim_blocks`+`lstrip_blocks` on.
 
-`app.py` (Flask): `GET /` (+`?c=` preset prefill), `POST /generate`, `POST
-/api/generate` (JSON→zip), `DEFAULTS`, `ADDONS_META`. UI: `templates/index.html`,
-`public/css/app.css`, `public/js/{form,entities,preset}.js` (form.js gates options
-live using the same tags as the server).
+`app.py` (Flask): UI routes `GET /` (+`?c=` preset prefill) + `POST /generate`;
+**JSON API** `POST /api/generate` (lenient body — `_parse_api_request` accepts a
+nested `stack` or flat axes, omitted axes default via `compose`), `GET
+/api/options` (discovery catalog), `GET /api/health`, `GET /api/openapi.json`.
+Cross-cutting (scoped to `/api/*`): `_cors_headers` (open CORS), `_api_gate`
+(OPTIONS preflight + **env-gated** `x-api-key`, enforced only when `API_KEY` is
+set), and `HTTPException`/`Exception` handlers → JSON errors. `DEFAULTS`,
+`ADDONS_META`. Spec lives in `public/openapi.json`; examples in `API.md`. UI:
+`templates/index.html`, `public/css/app.css`, `public/js/{form,entities,preset}.js`
+(form.js gates options live using the same tags as the server).
 
 `scaffolds/`: `backend/<id>/`, `frontend/<id>/`, `database/{sql,memory,drizzle}/`,
 `addons/<id>/`, `base/`. Tests in `tests/` use **pairwise** coverage

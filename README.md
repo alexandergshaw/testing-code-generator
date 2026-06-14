@@ -16,17 +16,33 @@ python app.py
 
 Open <http://localhost:5000>, choose your stack, and click **Download .zip**.
 
+## HTTP API
+
+The same generator is callable as a JSON API — POST a stack config, get a
+project `.zip` back. Designed to be called from other apps. Full reference and
+`curl`/JS/Python examples: **[API.md](API.md)**.
+
+| Method & path        | Purpose                                                |
+| -------------------- | ------------------------------------------------------ |
+| `POST /api/generate` | Stack config (JSON) → project zip.                     |
+| `GET  /api/options`  | Discovery catalog (axes, options, add-ons, tags).      |
+| `GET  /api/health`   | Liveness check.                                        |
+| `GET  /api/openapi.json` | OpenAPI 3.1 spec.                                  |
+
+CORS is open on `/api/*`. Bodies are lenient — omitted axes use defaults, so
+`{}` is a valid request. Set an `API_KEY` env var to require an `x-api-key`
+header on `/api/generate` (unset = open).
+
 ## Deploy to Vercel
 
-This app is Vercel-ready and runs as a single Python (Vercel Function):
+Runs as a single Python Vercel Function. The repo ships [`vercel.json`](vercel.json)
+which builds `app.py` with `@vercel/python` and routes all paths to it.
 
-- `app.py` exposes a `Flask` instance named `app` at the repo root, which Vercel
-  auto-detects as the entrypoint — no `vercel.json` or routing config required.
-- Runtime dependencies are in `requirements.txt` (Vercel installs these; `pytest`
-  is kept out, in `requirements-dev.txt`).
-- Static assets live in `public/**` so Vercel serves them from its CDN. Flask is
-  pointed at `public/` too, so local dev serves the same `/css/...` and `/js/...`
-  paths.
+- **`includeFiles` is required:** `scaffolds/`, `templates/`, `public/`, and
+  `generator/` are bundled so the function can read its templates at runtime.
+  Without it the build succeeds but generation 500s with `FileNotFoundError`.
+- Runtime deps are in `requirements.txt` (Flask + Jinja2 only; `pytest` lives in
+  `requirements-dev.txt`). Set the Python version to **3.12** in project settings.
 - Zips are built in memory (`BytesIO`), so the read-only serverless filesystem is
   a non-issue.
 
@@ -34,9 +50,9 @@ Deploy by connecting the Git repo in the Vercel dashboard, or:
 
 ```bash
 npm i -g vercel
+vercel dev      # run the serverless build locally (validates includeFiles)
 vercel          # preview deploy
 vercel --prod   # production
-vercel dev      # run the serverless setup locally
 ```
 
 ## What you can pick
@@ -82,8 +98,8 @@ LLMs involved:
 - **Presets.** *Save config* downloads the selection as `stackgen.json`,
   *Copy share link* encodes it into a `?c=…` URL, and *Import config* reloads a
   saved file. Every zip also contains its own `stackgen.json`, so a build is
-  reproducible. For scripting, `POST /api/generate` takes a config JSON body and
-  streams back the zip.
+  reproducible. For scripting and other apps, the [HTTP API](API.md)
+  (`POST /api/generate`) takes a config JSON body and streams back the zip.
 
 ## How it works
 

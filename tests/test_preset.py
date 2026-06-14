@@ -72,9 +72,14 @@ def test_api_generate_returns_zip(client):
     assert any(n.endswith("Dockerfile") for n in names)  # docker add-on applied
 
 
-def test_api_generate_rejects_bad_config(client):
-    assert client.post("/api/generate", json={"version": 1}).status_code == 400
-    assert client.post("/api/generate", data="notjson").status_code == 400
+def test_api_generate_rejects_bad_input(client):
+    # The API accepts lenient/partial bodies (missing axes fill from defaults), so
+    # rejection is reserved for genuinely malformed input, not a sparse config.
+    assert client.post("/api/generate", data="notjson").status_code == 400   # not JSON
+    assert client.post("/api/generate", json=[1, 2, 3]).status_code == 400    # not an object
+    assert client.post("/api/generate", json={"addons": "nope"}).status_code == 400  # wrong type
+    # A bare/partial config now succeeds (all defaults) rather than being rejected.
+    assert client.post("/api/generate", json={"version": 1}).status_code == 200
 
 
 def test_index_prefills_from_share_link(client):

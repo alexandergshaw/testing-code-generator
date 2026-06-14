@@ -1,0 +1,154 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tech-Stack App Generator API",
+    "version": "1.0.0",
+    "description": "POST a stack config and receive a ready-to-run project as a .zip. Deterministic Jinja2 composition — no LLMs. Every option combination is generated to actually run."
+  },
+  "servers": [{ "url": "/", "description": "Same origin as this deployment" }],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "Required only when the deployment sets an API_KEY env var. Otherwise the API is open."
+      }
+    },
+    "schemas": {
+      "Field": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string", "description": "snake_case column name", "example": "title" },
+          "type": {
+            "type": "string",
+            "enum": ["string", "text", "integer", "float", "boolean", "datetime"]
+          },
+          "required": { "type": "boolean", "default": false }
+        }
+      },
+      "Entity": {
+        "type": "object",
+        "required": ["name", "fields"],
+        "properties": {
+          "name": { "type": "string", "description": "PascalCase entity name", "example": "Product" },
+          "plural": { "type": "string", "description": "Optional API plural; defaults to name+'s'", "example": "products" },
+          "fields": { "type": "array", "items": { "$ref": "#/components/schemas/Field" }, "minItems": 1 }
+        }
+      },
+      "GenerateRequest": {
+        "type": "object",
+        "description": "Either nest the axes under 'stack' (canonical preset config) or place them at the top level. Any omitted axis falls back to its default, so {} is valid.",
+        "properties": {
+          "project_name": { "type": "string", "default": "my-app", "example": "shop" },
+          "stack": {
+            "type": "object",
+            "properties": {
+              "backend": { "type": "string", "example": "fastapi" },
+              "frontend": { "type": "string", "example": "react" },
+              "database": { "type": "string", "example": "sqlite" },
+              "styling": { "type": "string", "example": "tailwind" },
+              "auth": { "type": "string", "example": "jwt" },
+              "api": { "type": "string", "example": "rest" },
+              "pkg": { "type": "string", "example": "npm" }
+            }
+          },
+          "addons": { "type": "array", "items": { "type": "string" }, "example": ["docker", "tests"] },
+          "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } },
+        "required": ["error"]
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Liveness check",
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "status": { "type": "string", "example": "ok" }, "version": { "type": "integer", "example": 1 } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/options": {
+      "get": {
+        "summary": "Discovery catalog",
+        "description": "Every axis, its valid options, add-ons, field types, defaults, and compatibility tags — enough to build a valid request programmatically.",
+        "responses": {
+          "200": {
+            "description": "Catalog",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/api/generate": {
+      "post": {
+        "summary": "Generate a project zip",
+        "security": [{ "ApiKeyAuth": [] }, {}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GenerateRequest" },
+              "examples": {
+                "minimal": { "summary": "All defaults", "value": {} },
+                "typical": {
+                  "summary": "Stack + entities",
+                  "value": {
+                    "project_name": "shop",
+                    "stack": { "backend": "fastapi", "frontend": "react", "database": "sqlite", "auth": "jwt" },
+                    "addons": ["docker"],
+                    "schema": [
+                      { "name": "Product", "fields": [
+                        { "name": "title", "type": "string", "required": true },
+                        { "name": "price", "type": "float" }
+                      ] }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The generated project archive",
+            "content": {
+              "application/zip": { "schema": { "type": "string", "format": "binary" } }
+            },
+            "headers": {
+              "Content-Disposition": { "schema": { "type": "string", "example": "attachment; filename=shop.zip" } }
+            }
+          },
+          "400": {
+            "description": "Malformed body or an invalid/incompatible stack",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": {
+            "description": "API key required but missing/invalid (only when API_KEY is configured)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "413": {
+            "description": "Request body exceeds the size limit",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    }
+  }
+}

@@ -5,8 +5,15 @@ is the work queue + copy-paste recipes. Goal of the project: be *exhaustive* acr
 axes/options and languages, while **every generated combo actually runs**.
 
 ## Status snapshot
-- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~275 tests pass
+- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~301 tests pass
   (1 skipped = Ruby `ruby -c`, no local toolchain). Pairwise keeps the suite ~10s.
+- **Cloud HTTP API landed** (the end goal): `POST /api/generate` (JSON→zip, lenient
+  body), `GET /api/options` (discovery), `GET /api/health`, `GET /api/openapi.json`,
+  with open CORS, env-gated `x-api-key`, and JSON errors — all scoped to `/api/*` in
+  [app.py](app.py). `vercel.json` makes it deployable (`@vercel/python` + the
+  critical `includeFiles`). Verified via `tests/test_http_api.py` + a real-socket
+  smoke. **Remaining = a user step:** `vercel dev`/`vercel deploy` (touches the
+  user's Vercel account) and setting `API_KEY` + Python 3.12 in project settings.
 - **Django landed** (Objective #2): self-contained Python backend (own ORM +
   built-in SQLite). It deliberately does NOT provide the `data:shared` tag, so the
   database axis is forced to `none` (every non-`none` DB option requires that tag).
@@ -23,6 +30,23 @@ axes/options and languages, while **every generated combo actually runs**.
   db push` (predev/prestart) via npm lifecycle scripts — no backend/composer edits.
 
 ## Objectives (priority order)
+
+### 0. ✅ DONE (code) — Cloud HTTP API on Vercel  ·  ⏳ deploy is a user step
+The generator is now a JSON API callable from other apps. All in [app.py](app.py),
+scoped to `/api/*`: `POST /api/generate` (lenient body via `_parse_api_request`),
+`GET /api/options`, `GET /api/health`, `GET /api/openapi.json`; `_cors_headers`
+(open CORS), `_api_gate` (preflight + env-gated `x-api-key`), JSON error handlers.
+[`vercel.json`](vercel.json) builds `app.py` with `@vercel/python`; **`includeFiles`
+is load-bearing** (bundles `scaffolds/`/`templates/`/`public/`/`generator/` — without
+it prod 500s on `FileNotFoundError`, even though local works). Spec in
+`public/openapi.json`, examples in [API.md](API.md). Tests: `tests/test_http_api.py`.
+- **To finish (needs the user's Vercel account):** `vercel dev` to confirm
+  `includeFiles` bundles the data dirs (a 200 on `/api/health` does NOT prove
+  generation works — must POST `/api/generate` under `vercel dev`); then `vercel`
+  (preview) → `vercel --prod`. Set **Python 3.12** in project settings and an
+  optional **`API_KEY`** env var to lock the generate endpoint.
+- **Later (out of scope):** rate limiting (needs Upstash/Redis on serverless),
+  API-key issuance/metering, a base64-in-JSON response variant.
 
 ### 1. ✅ DONE — Node data story (rode the repo seam)
 All six Node data layers shipped as `scaffolds/database/<id>/` drop-ins + registry
