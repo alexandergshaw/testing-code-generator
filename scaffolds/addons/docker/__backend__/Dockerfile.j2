@@ -1,6 +1,6 @@
 [% if has_backend %]
 [% if python_backend %]
-FROM python:3.12-slim
+FROM [[ python_image ]]
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -14,7 +14,7 @@ CMD ["python", "app.py"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "[[ backend_port ]]"]
 [% endif %]
 [% else %]
-FROM node:20-slim
+FROM [[ node_image ]]
 WORKDIR /app
 COPY package*.json ./
 RUN npm install

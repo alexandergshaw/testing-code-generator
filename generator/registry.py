@@ -24,7 +24,9 @@ Composition semantics (kept deliberately uniform so every module is independent)
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -57,6 +59,45 @@ class Module:
 
 
 # --------------------------------------------------------------------------- #
+# Version pins — single source of truth, kept fresh from each ecosystem's
+# official registry by Renovate (see versions.json + renovate.json). The helpers
+# build the per-ecosystem dependency specs modules declare, so a version bump only
+# ever edits versions.json — never this catalogue.
+# --------------------------------------------------------------------------- #
+VERSIONS = json.loads(
+    (Path(__file__).resolve().parent / "versions.json").read_text(encoding="utf-8")
+)
+
+
+def v(ecosystem: str, name: str) -> str:
+    """The pinned version string for ``name`` in ``ecosystem`` (from versions.json)."""
+    return VERSIONS[ecosystem][name]
+
+
+def _npm(*names):
+    return tuple((n, v("npm", n)) for n in names)
+
+
+def _pypi(*specs):
+    # ``specs`` may carry extras (e.g. "uvicorn[standard]"); the version key is the
+    # bare package name.
+    return tuple(f"{s}{v('pypi', s.split('[')[0])}" for s in specs)
+
+
+def _go(*modules):
+    return tuple((m, v("golang", m)) for m in modules)
+
+
+def _gems(*names):
+    return tuple((n, v("rubygems", n)) for n in names)
+
+
+def docker_image(name: str) -> str:
+    """``"postgres"`` -> ``"postgres:16"`` using the pinned tag."""
+    return f"{name}:{v('docker', name)}"
+
+
+# --------------------------------------------------------------------------- #
 # Backend frameworks
 # --------------------------------------------------------------------------- #
 _BACKENDS = [
@@ -66,7 +107,7 @@ _BACKENDS = [
         axis="backend",
         summary="Python micro-framework, JSON API.",
         src="backend/flask",
-        requirements=("Flask>=3.0", "flask-cors>=4.0"),
+        requirements=_pypi("Flask", "flask-cors"),
         context={"run": ["pip install -r requirements.txt", "python app.py"],
                  "lang": "python", "extra_provides": ("graphql:strawberry",)},
     ),
@@ -76,7 +117,7 @@ _BACKENDS = [
         axis="backend",
         summary="Modern async Python API with auto docs.",
         src="backend/fastapi",
-        requirements=("fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.0"),
+        requirements=_pypi("fastapi", "uvicorn[standard]", "pydantic"),
         context={"run": ["pip install -r requirements.txt",
                           "uvicorn main:app --reload --port 8000"],
                  "lang": "python", "extra_provides": ("graphql:strawberry",)},
@@ -87,7 +128,7 @@ _BACKENDS = [
         axis="backend",
         summary="Modern Python ASGI API (Litestar).",
         src="backend/litestar",
-        requirements=("litestar[standard]>=2.0",),
+        requirements=_pypi("litestar[standard]"),
         context={"run": ["pip install -r requirements.txt",
                           "uvicorn main:app --port 8000"],
                  "lang": "python"},
@@ -98,7 +139,7 @@ _BACKENDS = [
         axis="backend",
         summary="Lightweight Python ASGI API (Starlette).",
         src="backend/starlette",
-        requirements=("starlette>=0.37", "uvicorn[standard]>=0.29"),
+        requirements=_pypi("starlette", "uvicorn[standard]"),
         context={"run": ["pip install -r requirements.txt",
                           "uvicorn main:app --port 8000"],
                  "lang": "python"},
@@ -109,7 +150,7 @@ _BACKENDS = [
         axis="backend",
         summary="Python / Django — own ORM + built-in SQLite, JSON API.",
         src="backend/django",
-        requirements=("Django>=5.0",),
+        requirements=_pypi("Django"),
         # Self-contained: Django brings its own ORM + SQLite, so it does NOT
         # provide ``data:shared`` — every non-``none`` database option requires
         # that tag, so the database axis is effectively forced to ``none`` here.
@@ -126,7 +167,7 @@ _BACKENDS = [
         axis="backend",
         summary="Node.js / Express JSON API (in-memory store).",
         src="backend/express",
-        npm=(("express", "^4.19.2"), ("cors", "^2.8.5")),
+        npm=_npm("express", "cors"),
         context={"run": ["npm install", "npm run dev"],
                  "lang": "node",
                  "npm_scripts": {"start": "node server.js",
@@ -138,7 +179,7 @@ _BACKENDS = [
         axis="backend",
         summary="Node.js / Fastify JSON API (in-memory store).",
         src="backend/fastify",
-        npm=(("fastify", "^4.28.0"),),
+        npm=_npm("fastify"),
         context={"run": ["npm install", "npm run dev"],
                  "lang": "node",
                  "npm_scripts": {"start": "node server.js",
@@ -150,7 +191,7 @@ _BACKENDS = [
         axis="backend",
         summary="Hono (Node) JSON API (in-memory store).",
         src="backend/hono",
-        npm=(("hono", "^4.6.0"), ("@hono/node-server", "^1.13.0")),
+        npm=_npm("hono", "@hono/node-server"),
         context={"run": ["npm install", "npm run dev"],
                  "lang": "node",
                  "npm_scripts": {"start": "node server.js",
@@ -162,8 +203,7 @@ _BACKENDS = [
         axis="backend",
         summary="Node.js / Koa JSON API (in-memory store).",
         src="backend/koa",
-        npm=(("koa", "^2.15.0"), ("@koa/router", "^13.0.0"),
-             ("koa-bodyparser", "^4.4.0")),
+        npm=_npm("koa", "@koa/router", "koa-bodyparser"),
         context={"run": ["npm install", "npm run dev"],
                  "lang": "node",
                  "npm_scripts": {"start": "node server.js",
@@ -175,10 +215,9 @@ _BACKENDS = [
         axis="backend",
         summary="Node.js / NestJS (TypeScript) JSON API (in-memory store).",
         src="backend/nestjs",
-        npm=(("@nestjs/common", "^10.4.0"), ("@nestjs/core", "^10.4.0"),
-             ("@nestjs/platform-express", "^10.4.0"),
-             ("reflect-metadata", "^0.2.2"), ("rxjs", "^7.8.1")),
-        npm_dev=(("typescript", "^5.4.0"), ("@types/node", "^20.14.0")),
+        npm=_npm("@nestjs/common", "@nestjs/core", "@nestjs/platform-express",
+                 "reflect-metadata", "rxjs"),
+        npm_dev=_npm("typescript", "@types/node"),
         context={"run": ["npm install", "npm run build", "npm start"],
                  "lang": "node",
                  "npm_scripts": {"build": "tsc", "start": "node dist/main.js"}},
@@ -198,7 +237,7 @@ _BACKENDS = [
         summary="Go Gin JSON API (in-memory store).",
         src="backend/gin",
         context={"run": ["go mod tidy", "go run ."], "lang": "go",
-                 "go_require": (("github.com/gin-gonic/gin", "v1.10.0"),)},
+                 "go_require": _go("github.com/gin-gonic/gin")},
     ),
     Module(
         id="chi",
@@ -207,7 +246,7 @@ _BACKENDS = [
         summary="Go Chi JSON API (in-memory store).",
         src="backend/chi",
         context={"run": ["go mod tidy", "go run ."], "lang": "go",
-                 "go_require": (("github.com/go-chi/chi/v5", "v5.1.0"),)},
+                 "go_require": _go("github.com/go-chi/chi/v5")},
     ),
     Module(
         id="echo",
@@ -216,7 +255,7 @@ _BACKENDS = [
         summary="Go Echo JSON API (in-memory store).",
         src="backend/echo",
         context={"run": ["go mod tidy", "go run ."], "lang": "go",
-                 "go_require": (("github.com/labstack/echo/v4", "v4.12.0"),)},
+                 "go_require": _go("github.com/labstack/echo/v4")},
     ),
     Module(
         id="sinatra",
@@ -225,7 +264,7 @@ _BACKENDS = [
         summary="Ruby Sinatra JSON API (in-memory store).",
         src="backend/sinatra",
         context={"run": ["bundle install", "ruby app.rb"], "lang": "ruby",
-                 "gems": ("sinatra", "puma", "rackup")},
+                 "gems": _gems("sinatra", "puma", "rackup")},
     ),
     Module(id="none", label="No backend", axis="backend",
            summary="Front-end only; uses mock data."),
@@ -250,8 +289,8 @@ _FRONTENDS = [
         axis="frontend",
         summary="React single-page app via Vite.",
         src="frontend/react",
-        npm=(("react", "^18.3.1"), ("react-dom", "^18.3.1")),
-        npm_dev=(("@vitejs/plugin-react", "^4.3.1"), ("vite", "^5.4.0")),
+        npm=_npm("react", "react-dom"),
+        npm_dev=_npm("@vitejs/plugin-react", "vite"),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -263,8 +302,8 @@ _FRONTENDS = [
         axis="frontend",
         summary="Vue 3 single-page app via Vite.",
         src="frontend/vue",
-        npm=(("vue", "^3.4.0"),),
-        npm_dev=(("@vitejs/plugin-vue", "^5.1.0"), ("vite", "^5.4.0")),
+        npm=_npm("vue"),
+        npm_dev=_npm("@vitejs/plugin-vue", "vite"),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -276,8 +315,8 @@ _FRONTENDS = [
         axis="frontend",
         summary="Svelte 5 single-page app via Vite.",
         src="frontend/svelte",
-        npm=(("svelte", "^5.0.0"),),
-        npm_dev=(("@sveltejs/vite-plugin-svelte", "^4.0.0"), ("vite", "^5.4.0")),
+        npm=_npm("svelte"),
+        npm_dev=_npm("@sveltejs/vite-plugin-svelte", "vite"),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -289,8 +328,8 @@ _FRONTENDS = [
         axis="frontend",
         summary="Preact single-page app via Vite.",
         src="frontend/preact",
-        npm=(("preact", "^10.24.0"),),
-        npm_dev=(("@preact/preset-vite", "^2.9.0"), ("vite", "^5.4.0")),
+        npm=_npm("preact"),
+        npm_dev=_npm("@preact/preset-vite", "vite"),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -302,8 +341,8 @@ _FRONTENDS = [
         axis="frontend",
         summary="SolidJS single-page app via Vite.",
         src="frontend/solid",
-        npm=(("solid-js", "^1.9.0"),),
-        npm_dev=(("vite-plugin-solid", "^2.10.0"), ("vite", "^5.4.0")),
+        npm=_npm("solid-js"),
+        npm_dev=_npm("vite-plugin-solid", "vite"),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -315,8 +354,8 @@ _FRONTENDS = [
         axis="frontend",
         summary="Lit web-components SPA via Vite.",
         src="frontend/lit",
-        npm=(("lit", "^3.2.0"),),
-        npm_dev=(("vite", "^5.4.0"),),
+        npm=_npm("lit"),
+        npm_dev=_npm("vite"),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -341,7 +380,7 @@ _DATABASES = [
         axis="database",
         summary="File-backed SQLite via SQLAlchemy.",
         src="database/sql",
-        requirements=("SQLAlchemy>=2.0",),
+        requirements=_pypi("SQLAlchemy"),
         provides=frozenset({"has-db", "engine:sqlite"}),
         requires=("lang:python", "data:shared"),
         requires_msg="A database needs a Python backend (Flask or FastAPI).",
@@ -353,13 +392,13 @@ _DATABASES = [
         axis="database",
         summary="PostgreSQL via SQLAlchemy (set DATABASE_URL).",
         src="database/sql",
-        requirements=("SQLAlchemy>=2.0", "psycopg2-binary>=2.9"),
+        requirements=_pypi("SQLAlchemy", "psycopg2-binary"),
         provides=frozenset({"has-db", "engine:postgres"}),
         requires=("lang:python", "data:shared"),
         requires_msg="A database needs a Python backend (Flask or FastAPI).",
         context={"db_url": "postgresql+psycopg2://postgres:postgres@localhost:5432/app",
                  "db_driver": "postgres",
-                 "docker": {"image": "postgres:16", "port": "5432",
+                 "docker": {"image": docker_image("postgres"), "port": "5432",
                             "url": "postgresql+psycopg2://postgres:postgres@db:5432/app",
                             "env": {"POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app"}}},
     ),
@@ -369,7 +408,7 @@ _DATABASES = [
         axis="database",
         summary="SQLite via Drizzle ORM (Node, better-sqlite3).",
         src="database/drizzle",
-        npm=(("drizzle-orm", "^0.36.0"), ("better-sqlite3", "^11.0.0")),
+        npm=_npm("drizzle-orm", "better-sqlite3"),
         provides=frozenset({"has-db", "engine:sqlite", "db:drizzle"}),
         requires=("lang:node", "data:shared"),
         requires_msg="Drizzle needs a Node backend.",
@@ -380,12 +419,12 @@ _DATABASES = [
         axis="database",
         summary="PostgreSQL via Drizzle ORM (Node, postgres-js; set DATABASE_URL).",
         src="database/drizzle-postgres",
-        npm=(("drizzle-orm", "^0.36.0"), ("postgres", "^3.4.0")),
+        npm=_npm("drizzle-orm", "postgres"),
         provides=frozenset({"has-db", "engine:postgres", "db:drizzle"}),
         requires=("lang:node", "data:shared"),
         requires_msg="Drizzle needs a Node backend.",
         context={"db_url": "postgres://postgres:postgres@localhost:5432/app",
-                 "docker": {"image": "postgres:16", "port": "5432",
+                 "docker": {"image": docker_image("postgres"), "port": "5432",
                             "url": "postgres://postgres:postgres@db:5432/app",
                             "env": {"POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app"}}},
     ),
@@ -395,12 +434,12 @@ _DATABASES = [
         axis="database",
         summary="MySQL via Drizzle ORM (Node, mysql2; set DATABASE_URL).",
         src="database/drizzle-mysql",
-        npm=(("drizzle-orm", "^0.36.0"), ("mysql2", "^3.11.0")),
+        npm=_npm("drizzle-orm", "mysql2"),
         provides=frozenset({"has-db", "engine:mysql", "db:drizzle"}),
         requires=("lang:node", "data:shared"),
         requires_msg="Drizzle needs a Node backend.",
         context={"db_url": "mysql://root:root@localhost:3306/app",
-                 "docker": {"image": "mysql:8", "port": "3306",
+                 "docker": {"image": docker_image("mysql"), "port": "3306",
                             "url": "mysql://root:root@db:3306/app",
                             "env": {"MYSQL_ROOT_PASSWORD": "root", "MYSQL_DATABASE": "app"}}},
     ),
@@ -410,12 +449,12 @@ _DATABASES = [
         axis="database",
         summary="MongoDB via Mongoose ODM (Node; set DATABASE_URL).",
         src="database/mongo",
-        npm=(("mongoose", "^8.7.0"),),
+        npm=_npm("mongoose"),
         provides=frozenset({"has-db", "engine:mongo", "db:mongoose"}),
         requires=("lang:node", "data:shared"),
         requires_msg="Mongoose needs a Node backend.",
         context={"db_url": "mongodb://localhost:27017/app",
-                 "docker": {"image": "mongo:7", "port": "27017",
+                 "docker": {"image": docker_image("mongo"), "port": "27017",
                             "url": "mongodb://db:27017/app", "env": {}}},
     ),
     Module(
@@ -424,8 +463,8 @@ _DATABASES = [
         axis="database",
         summary="SQLite via Prisma ORM (Node; runs `prisma generate` on install).",
         src="database/prisma",
-        npm=(("@prisma/client", "^5.22.0"),),
-        npm_dev=(("prisma", "^5.22.0"),),
+        npm=_npm("@prisma/client"),
+        npm_dev=_npm("prisma"),
         provides=frozenset({"has-db", "engine:sqlite", "db:prisma"}),
         requires=("lang:node", "data:shared"),
         requires_msg="Prisma needs a Node backend.",
@@ -442,8 +481,8 @@ _DATABASES = [
         axis="database",
         summary="PostgreSQL via Prisma ORM (Node; runs `prisma generate` on install).",
         src="database/prisma",
-        npm=(("@prisma/client", "^5.22.0"),),
-        npm_dev=(("prisma", "^5.22.0"),),
+        npm=_npm("@prisma/client"),
+        npm_dev=_npm("prisma"),
         provides=frozenset({"has-db", "engine:postgres", "db:prisma"}),
         requires=("lang:node", "data:shared"),
         requires_msg="Prisma needs a Node backend.",
@@ -453,7 +492,7 @@ _DATABASES = [
                  "npm_scripts": {"postinstall": "prisma generate",
                                  "predev": "prisma db push --skip-generate",
                                  "prestart": "prisma db push --skip-generate"},
-                 "docker": {"image": "postgres:16", "port": "5432",
+                 "docker": {"image": docker_image("postgres"), "port": "5432",
                             "url": "postgresql://postgres:postgres@db:5432/app",
                             "env": {"POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app"}}},
     ),
@@ -497,7 +536,7 @@ _API = [
     Module(
         id="graphql", label="GraphQL", axis="api",
         summary="Adds a Strawberry /graphql endpoint alongside REST.",
-        requirements=("strawberry-graphql>=0.230",),
+        requirements=_pypi("strawberry-graphql"),
         # v1: Flask/FastAPI (which ship the Strawberry schema), in-memory store.
         requires=("graphql:strawberry", "in-memory"),
         requires_msg="GraphQL (this version) needs Flask or FastAPI and no database.",
@@ -641,7 +680,7 @@ ADDONS: list[Module] = [
         id="tests", label="Tests", axis="addon",
         summary="pytest smoke tests against the API.",
         src="addons/tests",
-        requirements=("pytest>=8.0", "httpx>=0.27"),
+        requirements=_pypi("pytest", "httpx"),
         context={
             "requires_backend": ("flask", "fastapi"),
             "notes": ["**Tests:** run `pytest` in the backend folder."],
@@ -657,8 +696,8 @@ ADDONS: list[Module] = [
         id="lint", label="Lint / format", axis="addon",
         summary="Ruff for Python, Prettier for JS.",
         src="addons/lint",
-        requirements=("ruff>=0.5",),
-        npm_dev=(("prettier", "^3.3.0"),),
+        requirements=_pypi("ruff"),
+        npm_dev=_npm("prettier"),
         context={
             "npm_scripts": {"format": "prettier --write ."},
             "notes": ["**Lint:** `ruff check .` (Python) / `npm run format` (JS)."],

@@ -1,0 +1,33 @@
+name: ci
+
+# The "it runs" gate. The test suite renders every option/pair (pairwise) and runs
+# the per-language checks (py_compile / node --check / go build / ruby -c) when the
+# toolchain is present — so installing all four here turns the suite into real
+# cross-language verification. Renovate auto-merge waits on this check passing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests (renders + compiles every stack across all toolchains)
+        run: pytest -q

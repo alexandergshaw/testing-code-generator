@@ -1,0 +1,83 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 8,
+  "configMigration": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "npm pins in generator/versions.json",
+      "fileMatch": ["^generator/versions\\.json$"],
+      "matchStringsStrategy": "recursive",
+      "matchStrings": [
+        "\"npm\"\\s*:\\s*\\{(?<blockContent>[\\s\\S]*?)\\n  \\}",
+        "\"(?<depName>[^\"]+)\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "PyPI pins in generator/versions.json",
+      "fileMatch": ["^generator/versions\\.json$"],
+      "matchStringsStrategy": "recursive",
+      "matchStrings": [
+        "\"pypi\"\\s*:\\s*\\{(?<blockContent>[\\s\\S]*?)\\n  \\}",
+        "\"(?<depName>[^\"]+)\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440"
+    },
+    {
+      "customType": "regex",
+      "description": "Go module pins in generator/versions.json",
+      "fileMatch": ["^generator/versions\\.json$"],
+      "matchStringsStrategy": "recursive",
+      "matchStrings": [
+        "\"golang\"\\s*:\\s*\\{(?<blockContent>[\\s\\S]*?)\\n  \\}",
+        "\"(?<depName>[^\"]+)\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "go",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "RubyGems pins in generator/versions.json",
+      "fileMatch": ["^generator/versions\\.json$"],
+      "matchStringsStrategy": "recursive",
+      "matchStrings": [
+        "\"rubygems\"\\s*:\\s*\\{(?<blockContent>[\\s\\S]*?)\\n  \\}",
+        "\"(?<depName>[^\"]+)\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "rubygems",
+      "versioningTemplate": "ruby"
+    },
+    {
+      "customType": "regex",
+      "description": "Docker image/runtime pins in generator/versions.json",
+      "fileMatch": ["^generator/versions\\.json$"],
+      "matchStringsStrategy": "recursive",
+      "matchStrings": [
+        "\"docker\"\\s*:\\s*\\{(?<blockContent>[\\s\\S]*?)\\n  \\}",
+        "\"(?<depName>[^\"]+)\"\\s*:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Auto-merge safe bumps once CI (the 'it runs' matrix) is green.",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Majors usually need scaffold edits — open a PR for review, never auto-merge.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major-upstream"]
+    }
+  ]
+}

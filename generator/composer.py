@@ -15,8 +15,10 @@ from .registry import (
     AXES,
     AXIS_LABELS,
     OPTIONS,
+    VERSIONS,
     addon_applies,
     axis_default,
+    docker_image,
     get_addon,
     get_module,
 )
@@ -151,6 +153,9 @@ def build_context(
     # line on a block tag, which trim_blocks would swallow).
     ctx["backend_build"] = f"./{ctx['backend_dir']}" if ctx["backend_dir"] else "."
     ctx["frontend_build"] = f"./{ctx['frontend_dir']}" if ctx["frontend_dir"] else "."
+    # Docker base images, driven by versions.json so Renovate bumps them too.
+    ctx["python_image"] = docker_image("python")
+    ctx["node_image"] = docker_image("node")
     ctx.update(render_flags(ctx["entities"]))
     # Add-on flags: ``addons`` is the list of resolved add-on modules.
     selected_addons = {m.id for m in addons}
@@ -261,7 +266,7 @@ def _package_json(name: str, modules, ctx_extra: dict) -> bytes:
 
 def _go_mod(module_name: str, requires) -> bytes:
     """Render a minimal go.mod. ``requires`` is an iterable of (path, version)."""
-    lines = [f"module {module_name}", "", "go 1.22"]
+    lines = [f"module {module_name}", "", f"go {VERSIONS['golang_runtime']}"]
     requires = sorted(set(requires))
     if requires:
         lines += ["", "require ("] + [f"\t{p} {v}" for p, v in requires] + [")"]
@@ -269,9 +274,9 @@ def _go_mod(module_name: str, requires) -> bytes:
 
 
 def _gemfile(gems) -> bytes:
-    """Render a Ruby Gemfile from a set of gem names."""
+    """Render a Ruby Gemfile from ``(name, version)`` pairs (pinned ``~>``)."""
     lines = ['source "https://rubygems.org"', ""]
-    lines += [f'gem "{gem}"' for gem in sorted(set(gems))]
+    lines += [f'gem "{name}", "~> {ver}"' for name, ver in sorted(set(gems))]
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
