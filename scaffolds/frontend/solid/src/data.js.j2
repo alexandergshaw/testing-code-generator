@@ -1,0 +1,14 @@
+// Schema and API base the UI was generated from.
+export const API = [% if has_backend %]"[[ api_base_url ]]/api"[% else %]null[% endif %];
+
+export const ENTITIES = [
+[% for e in entities %]
+  { name: "[[ e.class_name ]]", plural: "[[ e.plural ]]", fields: [ [% for f in e.fields %]{ name: "[[ f.name ]]", type: "[[ f.type ]]", input: "[[ f.input ]]" }[% if not loop.last %], [% endif %][% endfor %]] },
+[% endfor %]
+];
+
+export function coerce(field, raw) {
+  if (field.type === "integer") return raw === "" ? null : parseInt(raw, 10);
+  if (field.type === "float") return raw === "" ? null : parseFloat(raw);
+  return raw;
+}

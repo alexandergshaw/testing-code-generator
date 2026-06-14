@@ -43,8 +43,8 @@ vercel dev      # run the serverless setup locally
 
 | Axis      | Options                                            |
 | --------- | -------------------------------------------------- |
-| Backend   | Flask, FastAPI, Express, Fastify, Go (net/http), None |
-| Frontend  | Vanilla JS, React, Vue, Svelte (all Vite), None    |
+| Backend   | Flask, FastAPI, Express, Fastify, Hono, Go (net/http), Sinatra (Ruby), None |
+| Frontend  | Vanilla JS, React, Vue, Svelte, Preact, SolidJS (Vite), None |
 | Database  | None, SQLite, PostgreSQL (Python backends only)    |
 | Styling   | Plain CSS, Bootstrap (CDN), Tailwind (Play CDN)    |
 | Auth      | None, JWT (stateless HS256: `/api/login` + `/api/me`) |

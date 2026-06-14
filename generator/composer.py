@@ -256,6 +256,13 @@ def _go_mod(module_name: str, requires) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
+def _gemfile(gems) -> bytes:
+    """Render a Ruby Gemfile from a set of gem names."""
+    lines = ['source "https://rubygems.org"', ""]
+    lines += [f'gem "{gem}"' for gem in sorted(set(gems))]
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def _build_manifests(selection: dict, ctx: dict, tree: dict, addon_mods=()) -> None:
     slug = ctx["project_slug"]
     backend_mod = get_module("backend", selection["backend"])
@@ -285,6 +292,11 @@ def _build_manifests(selection: dict, ctx: dict, tree: dict, addon_mods=()) -> N
         for mod in backend_part:
             go_req |= set(mod.context.get("go_require", ()))
         tree[_join(slug, backend_dir, "go.mod")] = _go_mod(slug, go_req)
+    elif lang == "ruby":
+        gems = set()
+        for mod in backend_part:
+            gems |= set(mod.context.get("gems", ()))
+        tree[_join(slug, backend_dir, "Gemfile")] = _gemfile(gems)
 
     # Frontend manifest (SPA only).
     if ctx["spa"]:

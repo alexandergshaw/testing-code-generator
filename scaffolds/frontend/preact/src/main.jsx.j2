@@ -1,0 +1,8 @@
+import { render } from "preact";
+
+import App from "./app.jsx";
+[% if styling == "plain" %]
+import "./styles.css";
+[% endif %]
+
+render(<App />, document.getElementById("app"));

@@ -1,0 +1,92 @@
+import { useEffect, useState } from "preact/hooks";
+
+import { API, ENTITIES, coerce } from "./data.js";
+
+function EntityPanel({ entity }) {
+  const [rows, setRows] = useState([]);
+  const [form, setForm] = useState({});
+
+  async function refresh() {
+    if (API) setRows(await (await fetch(`${API}/${entity.plural}`)).json());
+  }
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function add(event) {
+    event.preventDefault();
+    const payload = {};
+    for (const field of entity.fields) {
+      const fallback = field.input === "checkbox" ? false : "";
+      payload[field.name] = coerce(field, form[field.name] ?? fallback);
+    }
+    if (API) {
+      await fetch(`${API}/${entity.plural}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await refresh();
+    } else {
+      setRows((prev) => [...prev, { id: prev.length + 1, ...payload }]);
+    }
+    setForm({});
+  }
+
+  async function remove(id) {
+    if (API) {
+      await fetch(`${API}/${entity.plural}/${id}`, { method: "DELETE" });
+      await refresh();
+    } else {
+      setRows((prev) => prev.filter((row) => row.id !== id));
+    }
+  }
+
+  return (
+    <section>
+      <h2>{entity.name}</h2>
+      <form onSubmit={add}>
+        {entity.fields.map((field) =>
+          field.input === "checkbox" ? (
+            <label key={field.name}>
+              <input
+                type="checkbox"
+                checked={Boolean(form[field.name])}
+                onInput={(e) => setForm({ ...form, [field.name]: e.target.checked })}
+              />{" "}
+              {field.name}
+            </label>
+          ) : (
+            <input
+              key={field.name}
+              type={field.input === "textarea" ? "text" : field.input}
+              placeholder={field.name}
+              value={form[field.name] ?? ""}
+              onInput={(e) => setForm({ ...form, [field.name]: e.target.value })}
+            />
+          ),
+        )}
+        <button>Add</button>
+      </form>
+      <ul>
+        {rows.map((row) => (
+          <li key={row.id}>
+            {entity.fields.map((f) => `${f.name}: ${row[f.name]}`).join(", ")} (#{row.id})
+            <button onClick={() => remove(row.id)}>✕</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export default function App() {
+  return (
+    <main[% if styling == "tailwind" %] class="max-w-2xl mx-auto p-6"[% elif styling == "bootstrap" %] class="container py-4"[% endif %]>
+      <h1[% if styling == "tailwind" %] class="text-2xl font-bold mb-4"[% endif %]>[[ project_name ]]</h1>
+      {ENTITIES.map((entity) => (
+        <EntityPanel key={entity.plural} entity={entity} />
+      ))}
+    </main>
+  );
+}

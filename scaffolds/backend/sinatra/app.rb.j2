@@ -1,0 +1,114 @@
+# [[ project_name ]] — Sinatra JSON API
+require "sinatra"
+require "json"
+[% if auth == "jwt" %]
+require "openssl"
+require "base64"
+[% endif %]
+
+set :port, [[ backend_port ]]
+set :bind, "0.0.0.0"
+
+before do
+  content_type :json
+  headers "Access-Control-Allow-Origin" => "*",
+          "Access-Control-Allow-Methods" => "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers" => "Content-Type, Authorization"
+end
+
+options "*" do
+  204
+end
+
+[% for entity in entities %]
+$[[ entity.plural ]] = [ [% if is_default_schema %]{ "id" => 1, "name" => "First item" }, { "id" => 2, "name" => "Second item" }[% endif %]]
+$[[ entity.var ]]_seq = [% if is_default_schema %]2[% else %]0[% endif %]
+[% endfor %]
+
+get "/api/health" do
+  { status: "ok" }.to_json
+end
+[% if auth == "jwt" %]
+
+JWT_SECRET = "dev-secret-change-me" # override via env in production
+
+def b64url(data)
+  Base64.urlsafe_encode64(data, padding: false)
+end
+
+def b64url_decode(data)
+  Base64.urlsafe_decode64(data + "=" * ((4 - data.length % 4) % 4))
+end
+
+def make_token(sub)
+  header = b64url({ alg: "HS256", typ: "JWT" }.to_json)
+  payload = b64url({ sub: sub, exp: Time.now.to_i + 3600 }.to_json)
+  sig = b64url(OpenSSL::HMAC.digest("SHA256", JWT_SECRET, "#{header}.#{payload}"))
+  "#{header}.#{payload}.#{sig}"
+end
+
+def verify_token(token)
+  parts = (token || "").split(".")
+  return nil unless parts.length == 3
+  header, payload, sig = parts
+  expected = b64url(OpenSSL::HMAC.digest("SHA256", JWT_SECRET, "#{header}.#{payload}"))
+  return nil unless sig == expected
+  claims = JSON.parse(b64url_decode(payload)) rescue nil
+  return nil if claims.nil? || (claims["exp"] || 0) < Time.now.to_i
+  claims
+end
+
+post "/api/login" do
+  body = JSON.parse(request.body.read) rescue {}
+  username = (body["username"] || "").to_s.strip
+  halt 400, { error: "username required" }.to_json if username.empty?
+  { token: make_token(username) }.to_json
+end
+
+get "/api/me" do
+  header = request.env["HTTP_AUTHORIZATION"] || ""
+  token = header.start_with?("Bearer ") ? header[7..] : ""
+  claims = verify_token(token)
+  halt 401, { error: "unauthorized" }.to_json unless claims
+  claims.to_json
+end
+[% endif %]
+[% for entity in entities %]
+
+# ---- [[ entity.class_name ]] ----
+get "[[ entity.route ]]" do
+  $[[ entity.plural ]].to_json
+end
+
+post "[[ entity.route ]]" do
+  body = JSON.parse(request.body.read) rescue {}
+  $[[ entity.var ]]_seq += 1
+  item = { "id" => $[[ entity.var ]]_seq[% for f in entity.fields %], "[[ f.name ]]" => body["[[ f.name ]]"][% endfor %] }
+  $[[ entity.plural ]] << item
+  status 201
+  item.to_json
+end
+
+get "[[ entity.route ]]/:id" do
+  item = $[[ entity.plural ]].find { |x| x["id"] == params["id"].to_i }
+  halt 404, { error: "not found" }.to_json unless item
+  item.to_json
+end
+
+put "[[ entity.route ]]/:id" do
+  item = $[[ entity.plural ]].find { |x| x["id"] == params["id"].to_i }
+  halt 404, { error: "not found" }.to_json unless item
+  body = JSON.parse(request.body.read) rescue {}
+[% for f in entity.fields %]
+  item["[[ f.name ]]"] = body["[[ f.name ]]"] if body.key?("[[ f.name ]]")
+[% endfor %]
+  item.to_json
+end
+
+delete "[[ entity.route ]]/:id" do
+  before = $[[ entity.plural ]].length
+  $[[ entity.plural ]].reject! { |x| x["id"] == params["id"].to_i }
+  halt 404, { error: "not found" }.to_json if $[[ entity.plural ]].length == before
+  status 204
+end
+[% endfor %]
