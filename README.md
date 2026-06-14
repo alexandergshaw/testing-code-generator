@@ -59,6 +59,21 @@ vercel          # preview deploy
 vercel --prod   # production
 ```
 
+## Staying current
+
+Every dependency/runtime version lives in [`generator/versions.json`](generator/versions.json)
+— one source of truth that the catalogue reads (so a generated `package.json` /
+`requirements.txt` / `go.mod` / `Gemfile` / `Dockerfile` always reflects it).
+[Renovate](renovate.json) watches each official registry (npm, PyPI, Go, RubyGems,
+Docker) and proposes bumps; [CI](.github/workflows/ci.yml) renders and compiles
+every stack across all toolchains as the gate. Safe (minor/patch) bumps **auto-merge
+when CI is green**; majors open a PR for review (they often need scaffold edits — a
+failing CI is the signal). To bump a version by hand, edit only `versions.json`;
+`tests/test_versions.py` fails if the catalogue and the manifest ever drift.
+
+*Activation (one-time):* install the Renovate GitHub App on the repo and require the
+`ci` status check on `main` so auto-merge waits for green.
+
 ## What you can pick
 
 | Axis      | Options                                            |

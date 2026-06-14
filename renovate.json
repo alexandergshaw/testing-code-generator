@@ -4,6 +4,7 @@
   "schedule": ["before 6am on monday"],
   "prConcurrentLimit": 8,
   "configMigration": true,
+  "ignorePaths": ["scaffolds/**"],
   "customManagers": [
     {
       "customType": "regex",

@@ -5,8 +5,15 @@ is the work queue + copy-paste recipes. Goal of the project: be *exhaustive* acr
 axes/options and languages, while **every generated combo actually runs**.
 
 ## Status snapshot
-- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~317 tests pass
+- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~323 tests pass
   (1 skipped = Ruby `ruby -c`, no local toolchain). Pairwise keeps the suite ~10s.
+- **Auto-updates landed**: all version pins centralized in `generator/versions.json`
+  (modules read it via `_npm/_pypi/_go/_gems/docker_image`); `renovate.json` watches
+  every official registry and `.github/workflows/ci.yml` gates bumps (minor/patch
+  auto-merge on green, majors → PR). `tests/test_versions.py` blocks catalog↔manifest
+  drift. Verified locally: Renovate extracts all 36 pins + the config validates.
+  **User steps to activate:** install the Renovate GitHub App + add a branch-
+  protection rule on `main` requiring the `ci` check (so auto-merge waits for green).
 - **Custom structure landed** (`generator/structure.py`): a `structure` config
   block reshapes the layout — component-dir renames + `monorepo` preset, root-folder
   control (incl. no-wrapper), and injected files/folders (e.g. one folder per class
@@ -36,6 +43,20 @@ axes/options and languages, while **every generated combo actually runs**.
   db push` (predev/prestart) via npm lifecycle scripts — no backend/composer edits.
 
 ## Objectives (priority order)
+
+### 000. ✅ DONE — Auto-update pins from official sources (Renovate + CI gate)
+Versions centralized in `generator/versions.json`; the catalogue reads them via
+`_npm/_pypi/_go/_gems/docker_image` helpers in `registry.py` (+ `go` runtime and
+base images in `composer.py`/Dockerfiles). `renovate.json` runs **recursive regex
+customManagers** (one per ecosystem) over `versions.json` with the right
+datasource/versioning, plus native managers for the repo's own deps + GitHub Action
+refs. Policy: minor/patch/digest `automerge`, majors → labelled PR. `ci.yml` installs
+Python/Node/Go/Ruby and runs the suite (real cross-language compile/boot = the "it
+runs" gate Renovate waits on). `tests/test_versions.py` blocks drift. **Largely
+satisfies Objective #6's CI half.** Possible follow-ups: live-boot smoke job in CI
+for stronger auto-merge confidence; add PHP/.NET/JVM/Elixir/Rust toolchains to the CI
+matrix as Roadmap #3 lands; track the CI `python-version`/`node-version` from
+`versions.json` too.
 
 ### 00. ✅ DONE — Custom directory & file structures (UI + API)
 `generator/structure.py` normalizes a `structure` block: `root` (or `""` = no

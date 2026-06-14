@@ -33,6 +33,13 @@ authored + structurally tested here; real compile/run is CI-only.
   axis+lang (+`context["extra_provides"]`). Compatibility is **capability tags**, not
   a rules table: an option `provides` tags and `requires` tags; valid ⇔ every
   required tag is provided by the selection (+ structural "≥1 of backend/frontend").
+  **Versions are NOT inline** — every pin lives in `versions.json` (the single source
+  of truth); modules build their deps via `_npm/_pypi/_go/_gems/docker_image` helpers
+  that read it. **Renovate** (`renovate.json`, regex managers over `versions.json`)
+  keeps it fresh from each official registry; `.github/workflows/ci.yml` is the gate
+  — safe bumps auto-merge when green, majors open a PR (they usually need scaffold
+  edits, surfaced by a failing CI). Bump a version ⇒ edit `versions.json` only;
+  `tests/test_versions.py` fails if the catalogue and manifest ever drift.
 - **`composer.py`** — `validate()` (tag engine), `build_context()` (per-axis +
   `backend_lang`/`has_db`/`spa`/`is_default_schema`/entity flags), `_render_module()`
   (renders `scaffolds/<src>`; path tokens `__backend__`/`__frontend__`/`__root__`;
