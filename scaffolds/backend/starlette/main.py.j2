@@ -1,0 +1,204 @@
+"""[[ project_name ]] — Starlette JSON API."""
+[% if auth == "jwt" %]
+import base64
+import hashlib
+import hmac
+import json
+import time
+[% endif %]
+
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Route
+[% if has_db %]
+
+from db import SessionLocal, init_db, [[ entities | map(attribute='class_name') | join(", ") ]]
+[% endif %]
+[% if not has_db %]
+
+# In-memory stores (no database selected).
+[% for entity in entities %]
+_[[ entity.plural ]] = []
+_[[ entity.var ]]_seq = 0
+[% endfor %]
+[% endif %]
+[% if has_db %]
+
+[% for entity in entities %]
+def _dump_[[ entity.var ]](obj):
+    return {"id": obj.id[% for f in entity.fields %], "[[ f.name ]]": obj.[[ f.name ]][% endfor %]}
+
+
+[% endfor %]
+[% endif %]
+
+async def health(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+[% if auth == "jwt" %]
+_JWT_SECRET = "dev-secret-change-me"  # override via env in production
+
+
+def _b64url(data):
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+
+def _make_token(sub):
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = _b64url(json.dumps({"sub": sub, "exp": int(time.time()) + 3600}).encode())
+    signature = _b64url(
+        hmac.new(_JWT_SECRET.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest()
+    )
+    return f"{header}.{payload}.{signature}"
+
+
+def _verify_token(token):
+    try:
+        header, payload, signature = token.split(".")
+    except ValueError:
+        return None
+    expected = _b64url(
+        hmac.new(_JWT_SECRET.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest()
+    )
+    if not hmac.compare_digest(signature, expected):
+        return None
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=="))
+    if claims.get("exp", 0) < int(time.time()):
+        return None
+    return claims
+
+
+async def login(request: Request) -> JSONResponse:
+    data = await request.json()
+    username = (data.get("username") or "").strip()
+    if not username:
+        return JSONResponse({"error": "username required"}, status_code=400)
+    return JSONResponse({"token": _make_token(username)})
+
+
+async def me(request: Request) -> JSONResponse:
+    header = request.headers.get("authorization", "")
+    token = header[7:] if header.startswith("Bearer ") else ""
+    claims = _verify_token(token)
+    if claims is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse(claims)
+
+[% endif %]
+[% for entity in entities %]
+
+# ---- [[ entity.class_name ]] ----
+async def list_[[ entity.plural ]](request: Request) -> JSONResponse:
+[% if has_db %]
+    with SessionLocal() as session:
+        rows = session.query([[ entity.class_name ]]).order_by([[ entity.class_name ]].id).all()
+        return JSONResponse([_dump_[[ entity.var ]](row) for row in rows])
+[% else %]
+    return JSONResponse(_[[ entity.plural ]])
+[% endif %]
+
+
+async def create_[[ entity.var ]](request: Request) -> JSONResponse:
+    data = await request.json()
+[% if has_db %]
+    obj = [[ entity.class_name ]]([% for f in entity.fields %][[ f.name ]]=data.get("[[ f.name ]]")[% if not loop.last %], [% endif %][% endfor %])
+    with SessionLocal() as session:
+        session.add(obj)
+        session.commit()
+        return JSONResponse(_dump_[[ entity.var ]](obj), status_code=201)
+[% else %]
+    global _[[ entity.var ]]_seq
+    _[[ entity.var ]]_seq += 1
+    obj = {"id": _[[ entity.var ]]_seq[% for f in entity.fields %], "[[ f.name ]]": data.get("[[ f.name ]]")[% endfor %]}
+    _[[ entity.plural ]].append(obj)
+    return JSONResponse(obj, status_code=201)
+[% endif %]
+
+
+async def get_[[ entity.var ]](request: Request) -> JSONResponse:
+    obj_id = request.path_params["obj_id"]
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(_dump_[[ entity.var ]](obj))
+[% else %]
+    obj = next((x for x in _[[ entity.plural ]] if x["id"] == obj_id), None)
+    if obj is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(obj)
+[% endif %]
+
+
+async def update_[[ entity.var ]](request: Request) -> JSONResponse:
+    obj_id = request.path_params["obj_id"]
+    data = await request.json()
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        for key, value in data.items():
+            if key != "id" and hasattr(obj, key):
+                setattr(obj, key, value)
+        session.commit()
+        return JSONResponse(_dump_[[ entity.var ]](obj))
+[% else %]
+    obj = next((x for x in _[[ entity.plural ]] if x["id"] == obj_id), None)
+    if obj is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    for key, value in data.items():
+        if key != "id":
+            obj[key] = value
+    return JSONResponse(obj)
+[% endif %]
+
+
+async def delete_[[ entity.var ]](request: Request) -> Response:
+    obj_id = request.path_params["obj_id"]
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        session.delete(obj)
+        session.commit()
+        return Response(status_code=204)
+[% else %]
+    global _[[ entity.plural ]]
+    before = len(_[[ entity.plural ]])
+    _[[ entity.plural ]] = [x for x in _[[ entity.plural ]] if x["id"] != obj_id]
+    if len(_[[ entity.plural ]]) == before:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return Response(status_code=204)
+[% endif %]
+[% endfor %]
+
+routes = [
+    Route("/api/health", health),
+[% if auth == "jwt" %]
+    Route("/api/login", login, methods=["POST"]),
+    Route("/api/me", me),
+[% endif %]
+[% for entity in entities %]
+    Route("[[ entity.route ]]", list_[[ entity.plural ]]),
+    Route("[[ entity.route ]]", create_[[ entity.var ]], methods=["POST"]),
+    Route("[[ entity.route ]]/{obj_id:int}", get_[[ entity.var ]]),
+    Route("[[ entity.route ]]/{obj_id:int}", update_[[ entity.var ]], methods=["PUT"]),
+    Route("[[ entity.route ]]/{obj_id:int}", delete_[[ entity.var ]], methods=["DELETE"]),
+[% endfor %]
+]
+
+app = Starlette(
+    routes=routes,
+    middleware=[
+        Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]),
+    ],
+[% if has_db %]
+    on_startup=[init_db],
+[% endif %]
+)

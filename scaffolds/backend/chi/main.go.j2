@@ -1,0 +1,207 @@
+// [[ project_name ]] — Chi JSON API
+package main
+
+import (
+[% if auth == "jwt" %]
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/base64"
+[% endif %]
+    "encoding/json"
+    "log"
+    "net/http"
+    "strconv"
+[% if auth == "jwt" %]
+    "strings"
+[% endif %]
+    "sync"
+[% if auth == "jwt" %]
+    "time"
+[% endif %]
+
+    "github.com/go-chi/chi/v5"
+)
+
+[% for entity in entities %]
+type [[ entity.class_name ]] struct {
+    ID int `json:"id"`
+[% for f in entity.fields %]
+    [[ f.pascal ]] [[ f.go ]] `json:"[[ f.name ]]"`
+[% endfor %]
+}
+
+var (
+    [[ entity.var ]]Store = []*[[ entity.class_name ]]{}
+    [[ entity.var ]]Seq   = 0
+    [[ entity.var ]]Mu    sync.Mutex
+)
+[% endfor %]
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    _ = json.NewEncoder(w).Encode(v)
+}
+[% if auth == "jwt" %]
+
+const jwtSecret = "dev-secret-change-me" // override via env in production
+
+func b64url(b []byte) string {
+    return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func makeToken(sub string) string {
+    header := b64url([]byte(`{"alg":"HS256","typ":"JWT"}`))
+    body, _ := json.Marshal(map[string]any{"sub": sub, "exp": time.Now().Unix() + 3600})
+    payload := b64url(body)
+    mac := hmac.New(sha256.New, []byte(jwtSecret))
+    mac.Write([]byte(header + "." + payload))
+    return header + "." + payload + "." + b64url(mac.Sum(nil))
+}
+
+func verifyToken(token string) (map[string]any, bool) {
+    parts := strings.Split(token, ".")
+    if len(parts) != 3 {
+        return nil, false
+    }
+    mac := hmac.New(sha256.New, []byte(jwtSecret))
+    mac.Write([]byte(parts[0] + "." + parts[1]))
+    if !hmac.Equal([]byte(parts[2]), []byte(b64url(mac.Sum(nil)))) {
+        return nil, false
+    }
+    raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+    if err != nil {
+        return nil, false
+    }
+    var claims map[string]any
+    if err := json.Unmarshal(raw, &claims); err != nil {
+        return nil, false
+    }
+    if exp, ok := claims["exp"].(float64); ok && int64(exp) < time.Now().Unix() {
+        return nil, false
+    }
+    return claims, true
+}
+[% endif %]
+
+func main() {
+    r := chi.NewRouter()
+    r.Use(func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+            w.Header().Set("Access-Control-Allow-Origin", "*")
+            w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            if req.Method == http.MethodOptions {
+                w.WriteHeader(http.StatusNoContent)
+                return
+            }
+            next.ServeHTTP(w, req)
+        })
+    })
+
+    r.Get("/api/health", func(w http.ResponseWriter, req *http.Request) {
+        writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+    })
+[% if auth == "jwt" %]
+
+    r.Post("/api/login", func(w http.ResponseWriter, req *http.Request) {
+        var body struct {
+            Username string `json:"username"`
+        }
+        _ = json.NewDecoder(req.Body).Decode(&body)
+        if body.Username == "" {
+            writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username required"})
+            return
+        }
+        writeJSON(w, http.StatusOK, map[string]string{"token": makeToken(body.Username)})
+    })
+
+    r.Get("/api/me", func(w http.ResponseWriter, req *http.Request) {
+        header := req.Header.Get("Authorization")
+        token := ""
+        if strings.HasPrefix(header, "Bearer ") {
+            token = header[7:]
+        }
+        claims, ok := verifyToken(token)
+        if !ok {
+            writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+            return
+        }
+        writeJSON(w, http.StatusOK, claims)
+    })
+[% endif %]
+[% for entity in entities %]
+
+    // ---- [[ entity.class_name ]] ----
+    r.Get("[[ entity.route ]]", func(w http.ResponseWriter, req *http.Request) {
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        writeJSON(w, http.StatusOK, [[ entity.var ]]Store)
+    })
+
+    r.Post("[[ entity.route ]]", func(w http.ResponseWriter, req *http.Request) {
+        var body [[ entity.class_name ]]
+        if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+            writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
+            return
+        }
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        [[ entity.var ]]Seq++
+        body.ID = [[ entity.var ]]Seq
+        [[ entity.var ]]Store = append([[ entity.var ]]Store, &body)
+        writeJSON(w, http.StatusCreated, body)
+    })
+
+    r.Get("[[ entity.route ]]/{id}", func(w http.ResponseWriter, req *http.Request) {
+        id, _ := strconv.Atoi(chi.URLParam(req, "id"))
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        for _, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+                writeJSON(w, http.StatusOK, it)
+                return
+            }
+        }
+        writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+    })
+
+    r.Put("[[ entity.route ]]/{id}", func(w http.ResponseWriter, req *http.Request) {
+        id, _ := strconv.Atoi(chi.URLParam(req, "id"))
+        var body [[ entity.class_name ]]
+        if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+            writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
+            return
+        }
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        for _, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+[% for f in entity.fields %]
+                it.[[ f.pascal ]] = body.[[ f.pascal ]]
+[% endfor %]
+                writeJSON(w, http.StatusOK, it)
+                return
+            }
+        }
+        writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+    })
+
+    r.Delete("[[ entity.route ]]/{id}", func(w http.ResponseWriter, req *http.Request) {
+        id, _ := strconv.Atoi(chi.URLParam(req, "id"))
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        for i, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+                [[ entity.var ]]Store = append([[ entity.var ]]Store[:i], [[ entity.var ]]Store[i+1:]...)
+                w.WriteHeader(http.StatusNoContent)
+                return
+            }
+        }
+        writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+    })
+[% endfor %]
+
+    log.Println("API on http://localhost:[[ backend_port ]]")
+    log.Fatal(http.ListenAndServe(":[[ backend_port ]]", r))
+}

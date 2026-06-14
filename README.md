@@ -43,7 +43,7 @@ vercel dev      # run the serverless setup locally
 
 | Axis      | Options                                            |
 | --------- | -------------------------------------------------- |
-| Backend   | Python: Flask, FastAPI, Litestar · Node: Express, Fastify, Hono, Koa · Go: net/http, Gin · Ruby: Sinatra · None |
+| Backend   | Python: Flask, FastAPI, Litestar, Starlette · Node: Express, Fastify, Hono, Koa · Go: net/http, Gin, Chi, Echo · Ruby: Sinatra · None |
 | Frontend  | Vanilla JS, React, Vue, Svelte, Preact, SolidJS, Lit (Vite), None |
 | Database  | None, SQLite, PostgreSQL (Python backends only)    |
 | Styling   | Plain CSS, Bootstrap (CDN), Tailwind (Play CDN)    |

@@ -1,0 +1,189 @@
+// [[ project_name ]] — Echo JSON API
+package main
+
+import (
+[% if auth == "jwt" %]
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/base64"
+    "encoding/json"
+[% endif %]
+    "net/http"
+    "strconv"
+[% if auth == "jwt" %]
+    "strings"
+    "time"
+[% endif %]
+    "sync"
+
+    "github.com/labstack/echo/v4"
+)
+
+[% for entity in entities %]
+type [[ entity.class_name ]] struct {
+    ID int `json:"id"`
+[% for f in entity.fields %]
+    [[ f.pascal ]] [[ f.go ]] `json:"[[ f.name ]]"`
+[% endfor %]
+}
+
+var (
+    [[ entity.var ]]Store = []*[[ entity.class_name ]]{}
+    [[ entity.var ]]Seq   = 0
+    [[ entity.var ]]Mu    sync.Mutex
+)
+[% endfor %]
+[% if auth == "jwt" %]
+
+const jwtSecret = "dev-secret-change-me" // override via env in production
+
+func b64url(b []byte) string {
+    return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func makeToken(sub string) string {
+    header := b64url([]byte(`{"alg":"HS256","typ":"JWT"}`))
+    body, _ := json.Marshal(map[string]any{"sub": sub, "exp": time.Now().Unix() + 3600})
+    payload := b64url(body)
+    mac := hmac.New(sha256.New, []byte(jwtSecret))
+    mac.Write([]byte(header + "." + payload))
+    return header + "." + payload + "." + b64url(mac.Sum(nil))
+}
+
+func verifyToken(token string) (map[string]any, bool) {
+    parts := strings.Split(token, ".")
+    if len(parts) != 3 {
+        return nil, false
+    }
+    mac := hmac.New(sha256.New, []byte(jwtSecret))
+    mac.Write([]byte(parts[0] + "." + parts[1]))
+    if !hmac.Equal([]byte(parts[2]), []byte(b64url(mac.Sum(nil)))) {
+        return nil, false
+    }
+    raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+    if err != nil {
+        return nil, false
+    }
+    var claims map[string]any
+    if err := json.Unmarshal(raw, &claims); err != nil {
+        return nil, false
+    }
+    if exp, ok := claims["exp"].(float64); ok && int64(exp) < time.Now().Unix() {
+        return nil, false
+    }
+    return claims, true
+}
+[% endif %]
+
+func main() {
+    e := echo.New()
+    e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            c.Response().Header().Set("Access-Control-Allow-Origin", "*")
+            c.Response().Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            c.Response().Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            if c.Request().Method == http.MethodOptions {
+                return c.NoContent(http.StatusNoContent)
+            }
+            return next(c)
+        }
+    })
+
+    e.GET("/api/health", func(c echo.Context) error {
+        return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+    })
+[% if auth == "jwt" %]
+
+    e.POST("/api/login", func(c echo.Context) error {
+        var body struct {
+            Username string `json:"username"`
+        }
+        _ = c.Bind(&body)
+        if body.Username == "" {
+            return c.JSON(http.StatusBadRequest, map[string]string{"error": "username required"})
+        }
+        return c.JSON(http.StatusOK, map[string]string{"token": makeToken(body.Username)})
+    })
+
+    e.GET("/api/me", func(c echo.Context) error {
+        header := c.Request().Header.Get("Authorization")
+        token := ""
+        if strings.HasPrefix(header, "Bearer ") {
+            token = header[7:]
+        }
+        claims, ok := verifyToken(token)
+        if !ok {
+            return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+        }
+        return c.JSON(http.StatusOK, claims)
+    })
+[% endif %]
+[% for entity in entities %]
+
+    // ---- [[ entity.class_name ]] ----
+    e.GET("[[ entity.route ]]", func(c echo.Context) error {
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        return c.JSON(http.StatusOK, [[ entity.var ]]Store)
+    })
+
+    e.POST("[[ entity.route ]]", func(c echo.Context) error {
+        var body [[ entity.class_name ]]
+        if err := c.Bind(&body); err != nil {
+            return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
+        }
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        [[ entity.var ]]Seq++
+        body.ID = [[ entity.var ]]Seq
+        [[ entity.var ]]Store = append([[ entity.var ]]Store, &body)
+        return c.JSON(http.StatusCreated, body)
+    })
+
+    e.GET("[[ entity.route ]]/:id", func(c echo.Context) error {
+        id, _ := strconv.Atoi(c.Param("id"))
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        for _, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+                return c.JSON(http.StatusOK, it)
+            }
+        }
+        return c.JSON(http.StatusNotFound, map[string]string{"error": "not found"})
+    })
+
+    e.PUT("[[ entity.route ]]/:id", func(c echo.Context) error {
+        id, _ := strconv.Atoi(c.Param("id"))
+        var body [[ entity.class_name ]]
+        if err := c.Bind(&body); err != nil {
+            return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
+        }
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        for _, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+[% for f in entity.fields %]
+                it.[[ f.pascal ]] = body.[[ f.pascal ]]
+[% endfor %]
+                return c.JSON(http.StatusOK, it)
+            }
+        }
+        return c.JSON(http.StatusNotFound, map[string]string{"error": "not found"})
+    })
+
+    e.DELETE("[[ entity.route ]]/:id", func(c echo.Context) error {
+        id, _ := strconv.Atoi(c.Param("id"))
+        [[ entity.var ]]Mu.Lock()
+        defer [[ entity.var ]]Mu.Unlock()
+        for i, it := range [[ entity.var ]]Store {
+            if it.ID == id {
+                [[ entity.var ]]Store = append([[ entity.var ]]Store[:i], [[ entity.var ]]Store[i+1:]...)
+                return c.NoContent(http.StatusNoContent)
+            }
+        }
+        return c.JSON(http.StatusNotFound, map[string]string{"error": "not found"})
+    })
+[% endfor %]
+
+    e.Logger.Fatal(e.Start(":[[ backend_port ]]"))
+}
