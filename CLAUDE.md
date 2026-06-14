@@ -4,9 +4,13 @@ Deterministic **tech-stack app generator**: a Flask UI lets a user pick a stack
 (across 7 axes), define data entities, and download a ready-to-run app as a zip.
 The same engine is exposed as a **JSON HTTP API** (`POST /api/generate` → zip) for
 other apps. **No LLMs** — everything is Jinja2 template composition. Core promise:
-**every generated combo actually runs.** Deployed on Vercel via `vercel.json`
-(`@vercel/python` builds `app.py`; `includeFiles` bundles `scaffolds/`+`templates/`
-— without it generation 500s in prod); all generation in-memory (`BytesIO`).
+**every generated combo actually runs.** Deployed on Vercel via `vercel.json`: two
+builds — `@vercel/python` for `app.py` (`includeFiles` bundles `scaffolds/`+
+`templates/`+`public/`+`generator/`, or generation 500s in prod) and
+`@vercel/static` for `public/` (served via the `filesystem` route; Flask mounts the
+same files at `/public/*` via `static_url_path` so URLs match local↔prod — routing
+static through the function instead leaves the page unstyled). All generation
+in-memory (`BytesIO`).
 
 > **Remaining work + step-by-step recipes live in [ROADMAP.md](ROADMAP.md).** Read it
 > before extending the catalog.

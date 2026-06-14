@@ -26,7 +26,7 @@ def test_index_has_structure_controls(client):
     body = client.get("/").get_data(as_text=True)
     assert "Project structure" in body          # layout/root controls
     assert "Files &amp; folders" in body         # custom files editor
-    assert 'src="/js/structure.js"' in body
+    assert 'src="/public/js/structure.js"' in body
 
 
 def test_generate_form_route_removed(client):

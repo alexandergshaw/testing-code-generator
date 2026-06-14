@@ -29,10 +29,11 @@ ADDONS_META = [
     for m in ADDONS
 ]
 
-# Static assets live in public/ so Vercel serves them from its CDN. Pointing
-# Flask's static folder there (mounted at the root URL) keeps local `python
-# app.py` serving the same /css/... and /js/... paths.
-app = Flask(__name__, static_folder="public", static_url_path="")
+# Static assets live in public/ and are served from Vercel's CDN (vercel.json: the
+# @vercel/static build + the "filesystem" route). Serving them at /public/* — which
+# matches their on-disk path — means the exact same URLs work locally (Flask) and on
+# Vercel. Routing them through the Python function instead leaves the page unstyled.
+app = Flask(__name__, static_folder="public", static_url_path="/public")
 
 # Cap the request body so a bad caller can't stream huge payloads at the function
 # (over-size bodies raise 413 -> JSON error). 4 MB leaves room for injected custom

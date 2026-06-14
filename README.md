@@ -35,12 +35,16 @@ header on `/api/generate` (unset = open).
 
 ## Deploy to Vercel
 
-Runs as a single Python Vercel Function. The repo ships [`vercel.json`](vercel.json)
-which builds `app.py` with `@vercel/python` and routes all paths to it.
+The repo ships [`vercel.json`](vercel.json) with two builds: `@vercel/python` for
+`app.py` (the API + HTML), and `@vercel/static` for `public/`.
 
-- **`includeFiles` is required:** `scaffolds/`, `templates/`, `public/`, and
-  `generator/` are bundled so the function can read its templates at runtime.
-  Without it the build succeeds but generation 500s with `FileNotFoundError`.
+- **Static assets are served from the CDN, not the function.** `public/` is built
+  static and the `filesystem` route serves it; Flask mounts the same files at
+  `/public/*` so the URLs match locally and on Vercel. (Routing `/public/*` through
+  the Python function instead leaves the page **unstyled** — that was the bug.)
+- **`includeFiles` is required** for the Python build: `scaffolds/`, `templates/`,
+  `public/`, `generator/` are bundled so the function can read its templates at
+  runtime — without it generation 500s with `FileNotFoundError`.
 - Runtime deps are in `requirements.txt` (Flask + Jinja2 only; `pytest` lives in
   `requirements-dev.txt`). Set the Python version to **3.12** in project settings.
 - Zips are built in memory (`BytesIO`), so the read-only serverless filesystem is
