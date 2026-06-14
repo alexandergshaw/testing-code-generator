@@ -29,8 +29,8 @@ ADDONS_META = [
 # app.py` serving the same /css/... and /js/... paths.
 app = Flask(__name__, static_folder="public", static_url_path="")
 
-DEFAULTS = {"backend": "flask", "frontend": "vanilla",
-            "database": "none", "styling": "plain", "auth": "none", "api": "rest"}
+DEFAULTS = {"backend": "flask", "frontend": "vanilla", "database": "none",
+            "styling": "plain", "auth": "none", "api": "rest", "pkg": "npm"}
 
 
 def _render(selected, project_name="my-app", error=None, addons=(), schema=(), status=200):

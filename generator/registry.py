@@ -94,6 +94,18 @@ _BACKENDS = [
                                  "dev": "node --watch server.js"}},
     ),
     Module(
+        id="fastify",
+        label="Fastify",
+        axis="backend",
+        summary="Node.js / Fastify JSON API (in-memory store).",
+        src="backend/fastify",
+        npm=(("fastify", "^4.28.0"),),
+        context={"run": ["npm install", "npm run dev"],
+                 "lang": "node",
+                 "npm_scripts": {"start": "node server.js",
+                                 "dev": "node --watch server.js"}},
+    ),
+    Module(
         id="nethttp",
         label="Go (net/http)",
         axis="backend",
@@ -139,6 +151,19 @@ _FRONTENDS = [
         src="frontend/vue",
         npm=(("vue", "^3.4.0"),),
         npm_dev=(("@vitejs/plugin-vue", "^5.1.0"), ("vite", "^5.4.0")),
+        context={"run": ["npm install", "npm run dev"],
+                 "npm_type": "module",
+                 "npm_scripts": {"dev": "vite", "build": "vite build",
+                                 "preview": "vite preview"}},
+    ),
+    Module(
+        id="svelte",
+        label="Svelte (Vite)",
+        axis="frontend",
+        summary="Svelte 5 single-page app via Vite.",
+        src="frontend/svelte",
+        npm=(("svelte", "^5.0.0"),),
+        npm_dev=(("@sveltejs/vite-plugin-svelte", "^4.0.0"), ("vite", "^5.4.0")),
         context={"run": ["npm install", "npm run dev"],
                  "npm_type": "module",
                  "npm_scripts": {"dev": "vite", "build": "vite build",
@@ -229,10 +254,34 @@ _API = [
 ]
 
 
+# --------------------------------------------------------------------------- #
+# Package manager (JS toolchain; tunes install/run commands + package.json)
+# --------------------------------------------------------------------------- #
+_PKG = [
+    Module(id="npm", label="npm", axis="pkg",
+           summary="Default Node package manager."),
+    Module(id="pnpm", label="pnpm", axis="pkg",
+           summary="Fast, disk-efficient package manager.",
+           requires=("runtime:node",),
+           requires_msg="pnpm needs a Node backend or a build-step frontend.",
+           context={"pm_field": "pnpm@9.12.0"}),
+    Module(id="yarn", label="Yarn", axis="pkg",
+           summary="Yarn package manager.",
+           requires=("runtime:node",),
+           requires_msg="Yarn needs a Node backend or a build-step frontend.",
+           context={"pm_field": "yarn@4.5.0"}),
+    Module(id="bun", label="Bun", axis="pkg",
+           summary="Bun runtime + package manager.",
+           requires=("runtime:node",),
+           requires_msg="Bun needs a Node backend or a build-step frontend.",
+           context={"pm_field": "bun@1.1.34"}),
+]
+
+
 # Core axes are always present in a config; extension axes default to their
 # first (no-op) option, so older presets and 4-axis callers keep working.
 CORE_AXES = ("backend", "frontend", "database", "styling")
-AXES = ("backend", "frontend", "database", "styling", "auth", "api")
+AXES = ("backend", "frontend", "database", "styling", "auth", "api", "pkg")
 
 AXIS_LABELS = {
     "backend": "Backend framework",
@@ -241,6 +290,7 @@ AXIS_LABELS = {
     "styling": "Styling",
     "auth": "Authentication",
     "api": "API style",
+    "pkg": "Package manager",
 }
 
 OPTIONS: dict[str, list[Module]] = {
@@ -250,6 +300,7 @@ OPTIONS: dict[str, list[Module]] = {
     "styling": _STYLING,
     "auth": _AUTH,
     "api": _API,
+    "pkg": _PKG,
 }
 
 

@@ -1,0 +1,11 @@
+<script>
+  import { ENTITIES } from "./data.js";
+  import EntityPanel from "./EntityPanel.svelte";
+</script>
+
+<main[% if styling == "tailwind" %] class="max-w-2xl mx-auto p-6"[% elif styling == "bootstrap" %] class="container py-4"[% endif %]>
+  <h1[% if styling == "tailwind" %] class="text-2xl font-bold mb-4"[% endif %]>[[ project_name ]]</h1>
+  {#each ENTITIES as entity (entity.plural)}
+    <EntityPanel {entity} />
+  {/each}
+</main>

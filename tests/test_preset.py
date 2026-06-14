@@ -13,8 +13,8 @@ from generator.errors import InvalidSelection
 CONFIG = {
     "version": 1,
     "project_name": "Shop",
-    "stack": {"backend": "flask", "frontend": "vanilla",
-              "database": "sqlite", "styling": "bootstrap", "auth": "none", "api": "rest"},
+    "stack": {"backend": "flask", "frontend": "vanilla", "database": "sqlite",
+              "styling": "bootstrap", "auth": "none", "api": "rest", "pkg": "npm"},
     "addons": ["docker", "tests"],
     "schema": [{"name": "Product", "fields": [{"name": "title", "type": "string"}]}],
 }

@@ -1,0 +1,72 @@
+<script>
+  import { onMount } from "svelte";
+
+  import { API, coerce } from "./data.js";
+
+  let { entity } = $props();
+  let rows = $state([]);
+  let form = $state({});
+
+  async function load() {
+    if (API) {
+      rows = await (await fetch(`${API}/${entity.plural}`)).json();
+    }
+  }
+
+  onMount(load);
+
+  async function add(event) {
+    event.preventDefault();
+    const payload = {};
+    for (const field of entity.fields) {
+      const fallback = field.input === "checkbox" ? false : "";
+      payload[field.name] = coerce(field, form[field.name] ?? fallback);
+    }
+    if (API) {
+      await fetch(`${API}/${entity.plural}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await load();
+    } else {
+      rows = [...rows, { id: rows.length + 1, ...payload }];
+    }
+    form = {};
+  }
+
+  async function remove(id) {
+    if (API) {
+      await fetch(`${API}/${entity.plural}/${id}`, { method: "DELETE" });
+      await load();
+    } else {
+      rows = rows.filter((row) => row.id !== id);
+    }
+  }
+</script>
+
+<section>
+  <h2>{entity.name}</h2>
+  <form onsubmit={add}>
+    {#each entity.fields as field (field.name)}
+      {#if field.input === "checkbox"}
+        <label><input type="checkbox" bind:checked={form[field.name]} /> {field.name}</label>
+      {:else}
+        <input
+          type={field.input === "textarea" ? "text" : field.input}
+          placeholder={field.name}
+          bind:value={form[field.name]}
+        />
+      {/if}
+    {/each}
+    <button>Add</button>
+  </form>
+  <ul>
+    {#each rows as row (row.id)}
+      <li>
+        {entity.fields.map((f) => `${f.name}: ${row[f.name]}`).join(", ")} (#{row.id})
+        <button onclick={() => remove(row.id)}>✕</button>
+      </li>
+    {/each}
+  </ul>
+</section>

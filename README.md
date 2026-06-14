@@ -43,12 +43,13 @@ vercel dev      # run the serverless setup locally
 
 | Axis      | Options                                            |
 | --------- | -------------------------------------------------- |
-| Backend   | Flask, FastAPI, Express, Go (net/http), None       |
-| Frontend  | Vanilla JS, React (Vite), Vue (Vite), None         |
+| Backend   | Flask, FastAPI, Express, Fastify, Go (net/http), None |
+| Frontend  | Vanilla JS, React, Vue, Svelte (all Vite), None    |
 | Database  | None, SQLite, PostgreSQL (Python backends only)    |
 | Styling   | Plain CSS, Bootstrap (CDN), Tailwind (Play CDN)    |
 | Auth      | None, JWT (stateless HS256: `/api/login` + `/api/me`) |
 | API style | REST, GraphQL (Strawberry `/graphql`, Python + in-memory) |
+| Package manager | npm, pnpm, yarn, bun (JS toolchain)          |
 
 Compatibility between options is decided by **capability tags** (`lang:python`,
 `framework:react`, `engine:postgres`, …): each option declares what it

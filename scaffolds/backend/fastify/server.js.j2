@@ -1,0 +1,115 @@
+// [[ project_name ]] — Fastify JSON API
+const Fastify = require("fastify");
+[% if auth == "jwt" %]
+const crypto = require("crypto");
+[% endif %]
+
+const app = Fastify({ logger: false });
+
+// Permissive CORS for local development (no extra dependency).
+app.addHook("onRequest", async (req, reply) => {
+  reply.header("Access-Control-Allow-Origin", "*");
+  reply.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    reply.code(204).send();
+  }
+});
+
+[% for entity in entities %]
+let [[ entity.plural ]] = [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]];
+let [[ entity.var ]]Seq = [% if is_default_schema %]2[% else %]0[% endif %];
+[% endfor %]
+
+app.get("/api/health", async () => ({ status: "ok" }));
+[% if auth == "jwt" %]
+
+const JWT_SECRET = "dev-secret-change-me"; // override via env in production
+
+function b64url(value) {
+  return Buffer.from(value).toString("base64url");
+}
+
+function makeToken(sub) {
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64url(JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600 }));
+  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  return `${header}.${payload}.${sig}`;
+}
+
+function verifyToken(token) {
+  const parts = (token || "").split(".");
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  if (sig !== expected) return null;
+  let claims;
+  try {
+    claims = JSON.parse(Buffer.from(payload, "base64url").toString());
+  } catch {
+    return null;
+  }
+  if ((claims.exp || 0) < Math.floor(Date.now() / 1000)) return null;
+  return claims;
+}
+
+app.post("/api/login", async (req, reply) => {
+  const username = (req.body && req.body.username ? String(req.body.username) : "").trim();
+  if (!username) return reply.code(400).send({ error: "username required" });
+  return { token: makeToken(username) };
+});
+
+app.get("/api/me", async (req, reply) => {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const claims = verifyToken(token);
+  if (!claims) return reply.code(401).send({ error: "unauthorized" });
+  return claims;
+});
+[% endif %]
+[% for entity in entities %]
+
+// ---- [[ entity.class_name ]] ----
+app.get("[[ entity.route ]]", async () => [[ entity.plural ]]);
+
+app.post("[[ entity.route ]]", async (req, reply) => {
+  const body = req.body || {};
+  const item = { id: ++[[ entity.var ]]Seq[% for f in entity.fields %], [[ f.name ]]: body["[[ f.name ]]"][% endfor %] };
+  [[ entity.plural ]].push(item);
+  reply.code(201).send(item);
+});
+
+app.get("[[ entity.route ]]/:id", async (req, reply) => {
+  const item = [[ entity.plural ]].find((x) => x.id === Number(req.params.id));
+  if (!item) return reply.code(404).send({ error: "not found" });
+  return item;
+});
+
+app.put("[[ entity.route ]]/:id", async (req, reply) => {
+  const item = [[ entity.plural ]].find((x) => x.id === Number(req.params.id));
+  if (!item) return reply.code(404).send({ error: "not found" });
+  const body = req.body || {};
+[% for f in entity.fields %]
+  if ("[[ f.name ]]" in body) item.[[ f.name ]] = body["[[ f.name ]]"];
+[% endfor %]
+  return item;
+});
+
+app.delete("[[ entity.route ]]/:id", async (req, reply) => {
+  const before = [[ entity.plural ]].length;
+  [[ entity.plural ]] = [[ entity.plural ]].filter((x) => x.id !== Number(req.params.id));
+  if ([[ entity.plural ]].length === before) {
+    return reply.code(404).send({ error: "not found" });
+  }
+  reply.code(204).send();
+});
+[% endfor %]
+
+const PORT = [[ backend_port ]];
+app.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`API on http://localhost:${PORT}`);
+});
