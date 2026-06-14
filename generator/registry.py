@@ -104,6 +104,23 @@ _BACKENDS = [
                  "lang": "python"},
     ),
     Module(
+        id="django",
+        label="Django",
+        axis="backend",
+        summary="Python / Django — own ORM + built-in SQLite, JSON API.",
+        src="backend/django",
+        requirements=("Django>=5.0",),
+        # Self-contained: Django brings its own ORM + SQLite, so it does NOT
+        # provide ``data:shared`` — every non-``none`` database option requires
+        # that tag, so the database axis is effectively forced to ``none`` here.
+        provides=frozenset({"backend", "lang:python", "runtime:python"}),
+        requires_msg="Django supplies its own database; leave Database set to none.",
+        context={"run": ["pip install -r requirements.txt",
+                         "python manage.py migrate --run-syncdb",
+                         "python manage.py runserver 8000"],
+                 "lang": "python"},
+    ),
+    Module(
         id="express",
         label="Express",
         axis="backend",
@@ -326,7 +343,7 @@ _DATABASES = [
         src="database/sql",
         requirements=("SQLAlchemy>=2.0",),
         provides=frozenset({"has-db", "engine:sqlite"}),
-        requires=("lang:python",),
+        requires=("lang:python", "data:shared"),
         requires_msg="A database needs a Python backend (Flask or FastAPI).",
         context={"db_url": "sqlite:///app.db", "db_driver": "sqlite"},
     ),
@@ -338,7 +355,7 @@ _DATABASES = [
         src="database/sql",
         requirements=("SQLAlchemy>=2.0", "psycopg2-binary>=2.9"),
         provides=frozenset({"has-db", "engine:postgres"}),
-        requires=("lang:python",),
+        requires=("lang:python", "data:shared"),
         requires_msg="A database needs a Python backend (Flask or FastAPI).",
         context={"db_url": "postgresql+psycopg2://postgres:postgres@localhost:5432/app",
                  "db_driver": "postgres",
@@ -354,7 +371,7 @@ _DATABASES = [
         src="database/drizzle",
         npm=(("drizzle-orm", "^0.36.0"), ("better-sqlite3", "^11.0.0")),
         provides=frozenset({"has-db", "engine:sqlite", "db:drizzle"}),
-        requires=("lang:node",),
+        requires=("lang:node", "data:shared"),
         requires_msg="Drizzle needs a Node backend.",
     ),
     Module(
@@ -365,7 +382,7 @@ _DATABASES = [
         src="database/drizzle-postgres",
         npm=(("drizzle-orm", "^0.36.0"), ("postgres", "^3.4.0")),
         provides=frozenset({"has-db", "engine:postgres", "db:drizzle"}),
-        requires=("lang:node",),
+        requires=("lang:node", "data:shared"),
         requires_msg="Drizzle needs a Node backend.",
         context={"db_url": "postgres://postgres:postgres@localhost:5432/app",
                  "docker": {"image": "postgres:16", "port": "5432",
@@ -380,7 +397,7 @@ _DATABASES = [
         src="database/drizzle-mysql",
         npm=(("drizzle-orm", "^0.36.0"), ("mysql2", "^3.11.0")),
         provides=frozenset({"has-db", "engine:mysql", "db:drizzle"}),
-        requires=("lang:node",),
+        requires=("lang:node", "data:shared"),
         requires_msg="Drizzle needs a Node backend.",
         context={"db_url": "mysql://root:root@localhost:3306/app",
                  "docker": {"image": "mysql:8", "port": "3306",
@@ -395,7 +412,7 @@ _DATABASES = [
         src="database/mongo",
         npm=(("mongoose", "^8.7.0"),),
         provides=frozenset({"has-db", "engine:mongo", "db:mongoose"}),
-        requires=("lang:node",),
+        requires=("lang:node", "data:shared"),
         requires_msg="Mongoose needs a Node backend.",
         context={"db_url": "mongodb://localhost:27017/app",
                  "docker": {"image": "mongo:7", "port": "27017",
@@ -410,7 +427,7 @@ _DATABASES = [
         npm=(("@prisma/client", "^5.22.0"),),
         npm_dev=(("prisma", "^5.22.0"),),
         provides=frozenset({"has-db", "engine:sqlite", "db:prisma"}),
-        requires=("lang:node",),
+        requires=("lang:node", "data:shared"),
         requires_msg="Prisma needs a Node backend.",
         context={"db_url": "file:./dev.db",
                  "prisma_provider": "sqlite",
@@ -428,7 +445,7 @@ _DATABASES = [
         npm=(("@prisma/client", "^5.22.0"),),
         npm_dev=(("prisma", "^5.22.0"),),
         provides=frozenset({"has-db", "engine:postgres", "db:prisma"}),
-        requires=("lang:node",),
+        requires=("lang:node", "data:shared"),
         requires_msg="Prisma needs a Node backend.",
         context={"db_url": "postgresql://postgres:postgres@localhost:5432/app",
                  "prisma_provider": "postgresql",
@@ -559,15 +576,20 @@ def get_module(axis: str, option_id: str) -> Module:
 def _apply_default_tags() -> None:
     """Fill in ``provides`` for modules that didn't set tags explicitly.
 
-    Backends provide ``backend`` + their language; frontends provide
-    ``frontend`` + ``framework:<id>`` (+ ``runtime:node`` when they build with
-    npm). Data layers and framework-specific styling set their tags inline.
+    Backends provide ``backend`` + their language + ``data:shared`` (they consume
+    a data layer from the database axis — SQLAlchemy for Python, the repo seam for
+    Node); frontends provide ``frontend`` + ``framework:<id>`` (+ ``runtime:node``
+    when they build with npm). A self-contained backend (e.g. Django, which owns
+    its ORM) opts out simply by setting ``provides`` explicitly without
+    ``data:shared`` — then every non-``none`` database option (which requires it)
+    becomes incompatible. Data layers and framework-specific styling set their tags
+    inline.
     """
     for mod in _BACKENDS:
         if mod.id == "none" or mod.provides:
             continue
         lang = mod.context.get("lang", "")
-        tags = {"backend"}
+        tags = {"backend", "data:shared"}
         if lang:
             tags |= {f"lang:{lang}", f"runtime:{lang}"}
         tags |= set(mod.context.get("extra_provides", ()))

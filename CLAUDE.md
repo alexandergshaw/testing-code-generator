@@ -54,17 +54,23 @@ live using the same tags as the server).
 (`tests/pairwise.py`) so the render matrix stays small as options grow.
 
 ## Catalog (7 axes, all tag-driven)
-- **backend (14):** Python: flask, fastapi, litestar, starlette · Node: express,
-  fastify, hono, koa, nestjs · Go: nethttp, gin, chi, echo · Ruby: sinatra · none
+- **backend (15):** Python: flask, fastapi, litestar, starlette, django · Node:
+  express, fastify, hono, koa, nestjs · Go: nethttp, gin, chi, echo · Ruby:
+  sinatra · none
 - **frontend (7):** vanilla, react, vue, svelte, preact, solid, lit · none
-- **database:** none(in-memory) · sqlite/postgres (SQLAlchemy, Python) ·
-  drizzle-sqlite (Node) — language-tagged
+- **database:** none(in-memory) · Python (SQLAlchemy): sqlite/postgres · Node:
+  drizzle-sqlite/postgres/mysql, mongo (Mongoose), prisma-sqlite/postgres —
+  language-tagged + `data:shared`-gated
 - **styling:** plain, bootstrap, tailwind · **auth:** none, jwt (stdlib HS256) ·
   **api:** rest, graphql (Strawberry; Flask/FastAPI only) · **pkg:** npm/pnpm/yarn/bun
 
 Every backend ships schema-driven CRUD + JWT. Node backends use a **repo seam**
-(`repo.list/create/get/update/remove`, async) so the data layer (in-memory vs
-Drizzle) swaps without touching route handlers — the database axis provides `repo.js`.
+(`repo.list/create/get/update/remove`, async) so the data layer swaps without
+touching route handlers — the database axis provides `repo.js`. **Django is the
+exception:** it owns its ORM + SQLite, so it does *not* provide the `data:shared`
+tag that every non-`none` database option requires → the database axis is forced
+to `none` for it (validator + UI both gate on this). Django seeds via a
+`post_migrate` signal in `app/apps.py`; run with `migrate --run-syncdb`.
 
 ## Conventions & gotchas (learned the hard way)
 - **"It runs" is sacred.** Don't ship a scaffold you can't verify compiles/runs

@@ -6,7 +6,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE [[ backend_port ]]
-[% if backend == "flask" %]
+[% if backend == "django" %]
+CMD python manage.py migrate --run-syncdb && python manage.py runserver 0.0.0.0:[[ backend_port ]]
+[% elif backend == "flask" %]
 CMD ["python", "app.py"]
 [% else %]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "[[ backend_port ]]"]

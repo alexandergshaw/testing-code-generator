@@ -5,8 +5,12 @@ is the work queue + copy-paste recipes. Goal of the project: be *exhaustive* acr
 axes/options and languages, while **every generated combo actually runs**.
 
 ## Status snapshot
-- 7 axes, all tag-driven. 14 backends / 4 languages, 7 frontends. ~267 tests pass
+- 7 axes, all tag-driven. 15 backends / 4 languages, 7 frontends. ~275 tests pass
   (1 skipped = Ruby `ruby -c`, no local toolchain). Pairwise keeps the suite ~10s.
+- **Django landed** (Objective #2): self-contained Python backend (own ORM +
+  built-in SQLite). It deliberately does NOT provide the `data:shared` tag, so the
+  database axis is forced to `none` (every non-`none` DB option requires that tag).
+  Live-verified end-to-end (CRUD + JWT) on Django 6.
 - **Node data story is DONE** via the **repo seam** (Objective #1 complete): Drizzle
   (SQLite/Postgres/MySQL), Mongoose (Mongo), Prisma (SQLite/Postgres). Backends are
   data-layer-agnostic, so each ORM is a pure `repo.js` drop-in — zero backend edits.
@@ -38,16 +42,20 @@ delegate), `Field.prisma` (Prisma field type), the `docker_db` context descripto
   (drizzle casts it); a `mongo` auth/replica-set note for production; Prisma needs
   network on install (engine download) — already documented in the option summary.
 
-### 2. Django (Python, own ORM) (MED, live-verifiable, special-case)
-Django can't reuse the shared SQLAlchemy `db.py` — it has its own ORM + project
-layout (`manage.py`, `settings.py`, `urls.py`, `wsgi.py`, an app with `models.py`,
-DRF or plain `JsonResponse` views). Decision needed: make `backend=django` **self-
-contained** (brings its own SQLite via Django ORM, schema-driven models) and have it
-provide a tag so the `database` axis is constrained for it (e.g. django provides
-`in-memory`-equivalent or its own `has-db`; simplest: `django` `requires` nothing and
-the data axis is forced to `none` for it via a tag, with Django supplying DB itself).
-This is the one backend that doesn't fit the shared-data-layer model — plan it
-deliberately.
+### 2. ✅ DONE — Django (Python, own ORM, self-contained)
+`scaffolds/backend/django/` — `manage.py`, `project/{settings,urls,wsgi,middleware}.py`
+(minimal: `INSTALLED_APPS=["app"]`, a dependency-free CORS middleware, no admin/auth
+apps), `app/{models,views,apps}.py`. Plain `JsonResponse` views (no DRF), generic and
+schema-driven via a `REGISTRY` (plural → model + fields); `Field.django` maps types.
+JWT is the same stdlib HS256 as the other Python backends. **Tag design (the crux):**
+backends now provide `data:shared` (added in `_apply_default_tags`); Django sets
+`provides` explicitly *without* it, and every non-`none` DB option `requires`
+`data:shared` → Django is only valid with `database=none` and supplies its own SQLite.
+Seed via a `post_migrate` signal in `app/apps.py` (default schema only). Run steps +
+Docker CMD use `migrate --run-syncdb` (app ships no migrations → syncdb creates tables;
+do NOT add an empty `migrations/` package, or syncdb skips it). **Live-verified**:
+venv + `pip install Django` (6.0) + `migrate --run-syncdb` + `runserver` → seed, full
+CRUD, JWT login/me/401 all pass. Pairwise matrix py_compiles it automatically.
 
 ### 3. New language backends (MED, **CI-only** verification)
 PHP, Java, C#, Elixir, Rust. Each = one backend scaffold (schema-driven in-memory

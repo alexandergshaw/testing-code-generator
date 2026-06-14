@@ -1,0 +1,14 @@
+"""URL routing — literal endpoints first, then the generic CRUD resources."""
+from django.urls import path
+
+from app import views
+
+urlpatterns = [
+    path("api/health", views.health),
+[% if auth == "jwt" %]
+    path("api/login", views.login),
+    path("api/me", views.me),
+[% endif %]
+    path("api/<str:plural>", views.collection),
+    path("api/<str:plural>/<int:pk>", views.item),
+]

@@ -1,0 +1,22 @@
+from django.apps import AppConfig
+[% if is_default_schema %]
+from django.db.models.signals import post_migrate
+
+
+def _seed(sender, **kwargs):
+    """Seed the demo rows once, right after the tables are created."""
+    from .models import Item
+
+    if not Item.objects.exists():
+        Item.objects.bulk_create([Item(name="First item"), Item(name="Second item")])
+[% endif %]
+
+
+class CoreConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "app"
+[% if is_default_schema %]
+
+    def ready(self):
+        post_migrate.connect(_seed, sender=self)
+[% endif %]

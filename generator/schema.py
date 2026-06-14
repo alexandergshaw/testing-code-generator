@@ -85,6 +85,21 @@ class Field:
         return base if self.required else f"{base}?"
 
     @property
+    def django(self) -> str:
+        """Django ORM model field, e.g. ``models.FloatField(null=True, blank=True)``."""
+        kind, args = {
+            "string": ("CharField", ["max_length=255"]),
+            "text": ("TextField", []),
+            "integer": ("IntegerField", []),
+            "float": ("FloatField", []),
+            "boolean": ("BooleanField", []),
+            "datetime": ("DateTimeField", []),
+        }[self.type]
+        if not self.required:
+            args += ["null=True", "blank=True"]
+        return f"models.{kind}({', '.join(args)})"
+
+    @property
     def pascal(self) -> str:
         """snake_case field name -> exported Go/struct identifier (``in_stock`` -> ``InStock``)."""
         return "".join(part[:1].upper() + part[1:] for part in self.name.split("_"))

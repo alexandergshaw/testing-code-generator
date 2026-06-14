@@ -1,0 +1,16 @@
+"""A dependency-free CORS middleware so the SPA can call the API cross-origin."""
+from django.http import HttpResponse
+
+
+def cors_middleware(get_response):
+    def middleware(request):
+        if request.method == "OPTIONS":
+            response = HttpResponse(status=204)
+        else:
+            response = get_response(request)
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+
+    return middleware

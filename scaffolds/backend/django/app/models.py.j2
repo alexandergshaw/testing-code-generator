@@ -1,0 +1,10 @@
+"""Schema-driven Django models — one per entity (each gets an auto ``id``)."""
+from django.db import models
+
+[% for entity in entities %]
+
+class [[ entity.class_name ]](models.Model):
+[% for f in entity.fields %]
+    [[ f.name ]] = [[ f.django ]]
+[% endfor %]
+[% endfor %]
