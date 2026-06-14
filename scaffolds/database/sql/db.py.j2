@@ -1,7 +1,10 @@
 """Database layer for [[ project_name ]] (SQLAlchemy 2.0)."""
 import os
+[% if uses_datetime %]
+from datetime import datetime
+[% endif %]
 
-from sqlalchemy import Integer, String, create_engine
+from sqlalchemy import [[ sa_types_used | join(", ") ]], create_engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -23,18 +26,23 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 class Base(DeclarativeBase):
     pass
 
+[% for entity in entities %]
 
-class Item(Base):
-    __tablename__ = "items"
+class [[ entity.class_name ]](Base):
+    __tablename__ = "[[ entity.table ]]"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-
+[% for field in entity.fields %]
+    [[ field.name ]]: [[ field.mapped ]] = mapped_column([[ field.sa ]], nullable=[[ "False" if field.required else "True" ]])
+[% endfor %]
+[% endfor %]
 
 def init_db() -> None:
-    """Create tables and seed a couple of rows on first run."""
+    """Create tables[% if is_default_schema %] and seed sample rows[% endif %]."""
     Base.metadata.create_all(engine)
+[% if is_default_schema %]
     with SessionLocal() as session:
         if session.query(Item).count() == 0:
             session.add_all([Item(name="First item"), Item(name="Second item")])
             session.commit()
+[% endif %]

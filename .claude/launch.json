@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "generator",
+      "runtimeExecutable": "C:\\Users\\alexa\\OneDrive\\Documents\\Projects\\testing-code-generator\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-c", "import app; app.app.run(port=5000, use_reloader=False)"],
+      "port": 5000
+    }
+  ]
+}

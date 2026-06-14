@@ -219,3 +219,83 @@ CONSTRAINTS = [
         "message": "A database needs a Python backend (Flask or FastAPI).",
     },
 ]
+
+
+# --------------------------------------------------------------------------- #
+# Feature add-ons (multi-select, independent of the four axes)
+# --------------------------------------------------------------------------- #
+# Each add-on is a Module placed under scaffolds/addons/<id>. Add-on templates
+# use the path tokens __backend__ / __frontend__ / __root__ to land files in the
+# right component. An add-on may declare applicability via context keys
+# "requires_backend" / "requires_frontend" (tuples of allowed ids); when the
+# current stack doesn't match, the add-on is hidden in the UI and skipped server
+# side. Populated in the add-ons build step.
+ADDONS: list[Module] = [
+    Module(
+        id="docker", label="Docker", axis="addon",
+        summary="Dockerfiles + Compose (adds a Postgres service when selected).",
+        src="addons/docker",
+        context={"notes": ["**Docker:** `docker compose up` builds and runs everything."]},
+    ),
+    Module(
+        id="tests", label="Tests", axis="addon",
+        summary="pytest smoke tests against the API.",
+        src="addons/tests",
+        requirements=("pytest>=8.0", "httpx>=0.27"),
+        context={
+            "requires_backend": ("flask", "fastapi"),
+            "notes": ["**Tests:** run `pytest` in the backend folder."],
+        },
+    ),
+    Module(
+        id="ci", label="GitHub Actions CI", axis="addon",
+        summary="CI workflow that installs deps and builds/compiles on push & PR.",
+        src="addons/ci",
+        context={"notes": ["**CI:** `.github/workflows/ci.yml` runs on push and PR."]},
+    ),
+    Module(
+        id="lint", label="Lint / format", axis="addon",
+        summary="Ruff for Python, Prettier for JS.",
+        src="addons/lint",
+        requirements=("ruff>=0.5",),
+        npm_dev=(("prettier", "^3.3.0"),),
+        context={
+            "npm_scripts": {"format": "prettier --write ."},
+            "notes": ["**Lint:** `ruff check .` (Python) / `npm run format` (JS)."],
+        },
+    ),
+    Module(
+        id="env", label="Env config", axis="addon",
+        summary="A .env.example listing the app's environment variables.",
+        src="addons/env",
+        context={
+            "requires_backend": ("flask", "fastapi", "express"),
+            "notes": ["**Env:** copy `.env.example` to `.env` and adjust."],
+        },
+    ),
+    Module(
+        id="license", label="MIT License", axis="addon",
+        summary="Adds an MIT LICENSE file.",
+        src="addons/license",
+        context={"notes": ["**License:** MIT (see `LICENSE`)."]},
+    ),
+]
+
+ADDON_LABELS = {m.id: m.label for m in ADDONS}
+
+_ADDON_INDEX = {m.id: m for m in ADDONS}
+
+
+def get_addon(addon_id: str) -> Module:
+    return _ADDON_INDEX[addon_id]
+
+
+def addon_applies(mod: Module, selection: dict) -> bool:
+    """Whether an add-on is compatible with the chosen stack."""
+    rb = mod.context.get("requires_backend")
+    rf = mod.context.get("requires_frontend")
+    if rb and selection.get("backend") not in rb:
+        return False
+    if rf and selection.get("frontend") not in rf:
+        return False
+    return True

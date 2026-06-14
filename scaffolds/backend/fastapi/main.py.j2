@@ -1,9 +1,16 @@
 """[[ project_name ]] — FastAPI JSON API."""
+[% if uses_datetime %]
+from datetime import datetime
+[% endif %]
+[% if uses_optional %]
+from typing import Optional
+[% endif %]
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 [% if has_db %]
-from db import SessionLocal, Item, init_db
+from db import SessionLocal, init_db, [[ entities | map(attribute='class_name') | join(", ") ]]
 [% endif %]
 
 app = FastAPI(title="[[ project_name ]]")
@@ -14,13 +21,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 [% if not has_db %]
-_items = [{"id": 1, "name": "First item"}, {"id": 2, "name": "Second item"}]
+
+# In-memory stores (no database selected).
+[% for entity in entities %]
+_[[ entity.plural ]] = []
+_[[ entity.var ]]_seq = 0
+[% endfor %]
 [% endif %]
 
+[% for entity in entities %]
 
-class ItemIn(BaseModel):
-    name: str
+class [[ entity.class_name ]]In(BaseModel):
+[% for f in entity.fields %]
+    [[ f.name ]]: [[ f.pydantic ]]
+[% endfor %]
 
+[% endfor %]
+[% if has_db %]
+[% for entity in entities %]
+def _dump_[[ entity.var ]](obj):
+    return {"id": obj.id[% for f in entity.fields %], "[[ f.name ]]": obj.[[ f.name ]][% endfor %]}
+
+
+[% endfor %]
+[% endif %]
 
 @app.on_event("startup")
 def _startup():
@@ -35,31 +59,89 @@ def _startup():
 def health():
     return {"status": "ok"}
 
+[% for entity in entities %]
 
-@app.get("/api/items")
-def list_items():
+# ---- [[ entity.class_name ]] ----
+@app.get("[[ entity.route ]]")
+def list_[[ entity.plural ]]():
 [% if has_db %]
     with SessionLocal() as session:
-        items = session.query(Item).order_by(Item.id).all()
-        return [{"id": i.id, "name": i.name} for i in items]
+        rows = session.query([[ entity.class_name ]]).order_by([[ entity.class_name ]].id).all()
+        return [_dump_[[ entity.var ]](row) for row in rows]
 [% else %]
-    return _items
+    return _[[ entity.plural ]]
 [% endif %]
 
 
-@app.post("/api/items", status_code=201)
-def add_item(payload: ItemIn):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="name is required")
+@app.post("[[ entity.route ]]", status_code=201)
+def create_[[ entity.var ]](payload: [[ entity.class_name ]]In):
 [% if has_db %]
+    obj = [[ entity.class_name ]](**payload.model_dump())
     with SessionLocal() as session:
-        item = Item(name=name)
-        session.add(item)
+        session.add(obj)
         session.commit()
-        return {"id": item.id, "name": item.name}
+        return _dump_[[ entity.var ]](obj)
 [% else %]
-    new = {"id": len(_items) + 1, "name": name}
-    _items.append(new)
-    return new
+    global _[[ entity.var ]]_seq
+    _[[ entity.var ]]_seq += 1
+    obj = {"id": _[[ entity.var ]]_seq, **payload.model_dump()}
+    _[[ entity.plural ]].append(obj)
+    return obj
 [% endif %]
+
+
+@app.get("[[ entity.route ]]/{obj_id}")
+def get_[[ entity.var ]](obj_id: int):
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            raise HTTPException(status_code=404, detail="not found")
+        return _dump_[[ entity.var ]](obj)
+[% else %]
+    obj = next((x for x in _[[ entity.plural ]] if x["id"] == obj_id), None)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return obj
+[% endif %]
+
+
+@app.put("[[ entity.route ]]/{obj_id}")
+def update_[[ entity.var ]](obj_id: int, payload: [[ entity.class_name ]]In):
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            raise HTTPException(status_code=404, detail="not found")
+        for key, value in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, key, value)
+        session.commit()
+        return _dump_[[ entity.var ]](obj)
+[% else %]
+    obj = next((x for x in _[[ entity.plural ]] if x["id"] == obj_id), None)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="not found")
+    obj.update(payload.model_dump(exclude_unset=True))
+    return obj
+[% endif %]
+
+
+@app.delete("[[ entity.route ]]/{obj_id}", status_code=204)
+def delete_[[ entity.var ]](obj_id: int):
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            raise HTTPException(status_code=404, detail="not found")
+        session.delete(obj)
+        session.commit()
+        return None
+[% else %]
+    global _[[ entity.plural ]]
+    before = len(_[[ entity.plural ]])
+    _[[ entity.plural ]] = [x for x in _[[ entity.plural ]] if x["id"] != obj_id]
+    if len(_[[ entity.plural ]]) == before:
+        raise HTTPException(status_code=404, detail="not found")
+    return None
+[% endif %]
+[% endfor %]

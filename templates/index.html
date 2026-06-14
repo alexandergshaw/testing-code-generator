@@ -11,7 +11,8 @@
       <header>
         <h1>Tech-Stack App Generator</h1>
         <p class="lead">
-          Pick a stack and download a ready-to-run starter project as a zip.
+          Pick a stack, define your data model, and download a ready-to-run
+          project as a zip.
         </p>
       </header>
 
@@ -49,15 +50,59 @@
         </fieldset>
         {% endfor %}
 
+        <fieldset class="axis">
+          <legend>Data model</legend>
+          <p class="hint">
+            Define your own entities, or leave empty for a sample
+            <code>Item</code>. Custom entities need a Python backend.
+          </p>
+          <div id="entities-editor"></div>
+          <button type="button" id="add-entity" class="ghost">+ Add entity</button>
+          <input type="hidden" name="schema" id="schema-input" />
+        </fieldset>
+
+        <fieldset class="axis">
+          <legend>Add-ons</legend>
+          <div class="options">
+            {% for addon in addons %}
+            <label class="option">
+              <input
+                type="checkbox"
+                name="addons"
+                value="{{ addon.id }}"
+                {% if addon.id in selected_addons %}checked{% endif %}
+              />
+              <span class="option-body">
+                <span class="option-name">{{ addon.label }}</span>
+                <span class="option-summary">{{ addon.summary }}</span>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
         <p id="error" class="error" {% if not error %}hidden{% endif %}>
           {{ error or "" }}
         </p>
 
-        <button id="submit" type="submit" class="primary">Download .zip</button>
+        <div class="actions">
+          <button id="submit" type="submit" class="primary">Download .zip</button>
+          <button type="button" id="copy-link" class="ghost">Copy share link</button>
+          <button type="button" id="download-config" class="ghost">Save config</button>
+          <label class="ghost file-label">
+            Import config
+            <input type="file" id="import-config" accept="application/json" hidden />
+          </label>
+        </div>
       </form>
     </main>
 
     <script id="constraints" type="application/json">{{ constraints_json | safe }}</script>
+    <script id="addons-meta" type="application/json">{{ addons_meta_json | safe }}</script>
+    <script id="field-types" type="application/json">{{ field_types_json | safe }}</script>
+    <script id="initial-schema" type="application/json">{{ schema_json | safe }}</script>
+    <script src="{{ url_for('static', filename='js/entities.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/preset.js') }}"></script>
     <script src="{{ url_for('static', filename='js/form.js') }}"></script>
   </body>
 </html>

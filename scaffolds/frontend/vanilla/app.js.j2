@@ -1,46 +1,133 @@
 const API = [% if has_backend %]"[[ api_base_url ]]/api"[% else %]null[% endif %];
-let items = [% if has_backend %][][% else %][{ id: 1, name: "First item" }, { id: 2, name: "Second item" }][% endif %];
 
-const list = document.getElementById("items");
-const form = document.getElementById("add-form");
-const input = document.getElementById("name");
+// Schema the UI was generated from.
+const ENTITIES = [
+[% for e in entities %]
+  { name: "[[ e.class_name ]]", plural: "[[ e.plural ]]", fields: [ [% for f in e.fields %]{ name: "[[ f.name ]]", type: "[[ f.type ]]", input: "[[ f.input ]]" }[% if not loop.last %], [% endif %][% endfor %]] },
+[% endfor %]
+];
+[% if not has_backend %]
 
-function render() {
-  list.innerHTML = "";
-  for (const it of items) {
-    const li = document.createElement("li");
-[% if styling == "bootstrap" %]
-    li.className = "list-group-item";
+// No backend selected — keep records in memory.
+const MOCK = {
+[% for e in entities %]
+  "[[ e.plural ]]": [ [% if is_default_schema %]{ id: 1, name: "First item" }, { id: 2, name: "Second item" }[% endif %]],
+[% endfor %]
+};
 [% endif %]
-    li.textContent = it.name;
-    list.appendChild(li);
-  }
+
+const CLS = ({
+  bootstrap: { form: "d-flex gap-2 mb-2", input: "form-control", check: "form-check-input",
+               button: "btn btn-primary", ul: "list-group", li: "list-group-item d-flex justify-content-between align-items-center" },
+  tailwind: { form: "flex flex-wrap gap-2 mb-2 items-center", input: "border rounded px-2 py-1",
+              check: "", button: "bg-blue-600 text-white px-3 py-1 rounded", ul: "space-y-1",
+              li: "flex justify-between border-b py-1" },
+})["[[ styling ]]"] || { form: "", input: "", check: "", button: "", ul: "", li: "" };
+
+function coerce(field, raw) {
+  if (field.type === "integer") return raw === "" ? null : parseInt(raw, 10);
+  if (field.type === "float") return raw === "" ? null : parseFloat(raw);
+  return raw;
 }
 
-async function load() {
-  if (API) {
-    const res = await fetch(`${API}/items`);
-    items = await res.json();
-  }
-  render();
+async function listRows(entity) {
+  if (API) return (await fetch(`${API}/${entity.plural}`)).json();
+  return MOCK[entity.plural];
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const name = input.value.trim();
-  if (!name) return;
+async function createRow(entity, payload) {
   if (API) {
-    const res = await fetch(`${API}/items`, {
+    const res = await fetch(`${API}/${entity.plural}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(payload),
     });
-    items.push(await res.json());
-  } else {
-    items.push({ id: items.length + 1, name });
+    return res.json();
   }
-  input.value = "";
-  render();
-});
+  const store = MOCK[entity.plural];
+  const row = { id: (store.length ? store[store.length - 1].id : 0) + 1, ...payload };
+  store.push(row);
+  return row;
+}
 
-load();
+async function deleteRow(entity, id) {
+  if (API) {
+    await fetch(`${API}/${entity.plural}/${id}`, { method: "DELETE" });
+    return;
+  }
+  const store = MOCK[entity.plural];
+  const idx = store.findIndex((r) => r.id === id);
+  if (idx >= 0) store.splice(idx, 1);
+}
+
+function buildPanel(entity) {
+  const section = document.createElement("section");
+  const heading = document.createElement("h2");
+  heading.textContent = entity.name;
+  section.appendChild(heading);
+
+  const form = document.createElement("form");
+  form.className = CLS.form;
+  const inputs = {};
+  for (const field of entity.fields) {
+    const input = document.createElement("input");
+    if (field.input === "checkbox") {
+      input.type = "checkbox";
+      input.className = CLS.check;
+      input.title = field.name;
+    } else {
+      input.type = field.input === "textarea" ? "text" : field.input;
+      input.placeholder = field.name;
+      input.className = CLS.input;
+    }
+    inputs[field.name] = input;
+    form.appendChild(input);
+  }
+  const button = document.createElement("button");
+  button.textContent = "Add";
+  button.className = CLS.button;
+  form.appendChild(button);
+
+  const ul = document.createElement("ul");
+  ul.className = CLS.ul;
+
+  async function refresh() {
+    ul.innerHTML = "";
+    for (const row of await listRows(entity)) {
+      const li = document.createElement("li");
+      li.className = CLS.li;
+      const text = document.createElement("span");
+      text.textContent =
+        entity.fields.map((f) => `${f.name}: ${row[f.name]}`).join(", ") + ` (#${row.id})`;
+      const del = document.createElement("button");
+      del.textContent = "✕";
+      del.className = CLS.button;
+      del.addEventListener("click", async () => {
+        await deleteRow(entity, row.id);
+        refresh();
+      });
+      li.append(text, del);
+      ul.appendChild(li);
+    }
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = {};
+    for (const field of entity.fields) {
+      const el = inputs[field.name];
+      payload[field.name] = coerce(field, field.input === "checkbox" ? el.checked : el.value);
+      if (field.input === "checkbox") el.checked = false;
+      else el.value = "";
+    }
+    await createRow(entity, payload);
+    refresh();
+  });
+
+  section.append(form, ul);
+  refresh();
+  return section;
+}
+
+const root = document.getElementById("entities");
+for (const entity of ENTITIES) root.appendChild(buildPanel(entity));

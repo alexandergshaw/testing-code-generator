@@ -1,57 +1,93 @@
 import { useEffect, useState } from "react";
 
-const API = [% if has_backend %]"[[ api_base_url ]]/api"[% else %]null[% endif %];
+import { API, ENTITIES, coerce } from "./data.js";
 
-export default function App() {
-  const [items, setItems] = useState([% if has_backend %][][% else %][{ id: 1, name: "First item" }, { id: 2, name: "Second item" }][% endif %]);
-  const [name, setName] = useState("");
+function EntityPanel({ entity }) {
+  const [rows, setRows] = useState([]);
+  const [form, setForm] = useState({});
 
+  async function refresh() {
+    if (API) setRows(await (await fetch(`${API}/${entity.plural}`)).json());
+  }
   useEffect(() => {
-    if (API) {
-      fetch(`${API}/items`)
-        .then((r) => r.json())
-        .then(setItems);
-    }
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function add(event) {
     event.preventDefault();
-    const value = name.trim();
-    if (!value) return;
+    const payload = {};
+    for (const field of entity.fields) {
+      const fallback = field.input === "checkbox" ? false : "";
+      payload[field.name] = coerce(field, form[field.name] ?? fallback);
+    }
     if (API) {
-      const res = await fetch(`${API}/items`, {
+      await fetch(`${API}/${entity.plural}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: value }),
+        body: JSON.stringify(payload),
       });
-      setItems((prev) => [...prev, await res.json()]);
+      await refresh();
     } else {
-      setItems((prev) => [...prev, { id: prev.length + 1, name: value }]);
+      setRows((prev) => [...prev, { id: prev.length + 1, ...payload }]);
     }
-    setName("");
+    setForm({});
+  }
+
+  async function remove(id) {
+    if (API) {
+      await fetch(`${API}/${entity.plural}/${id}`, { method: "DELETE" });
+      await refresh();
+    } else {
+      setRows((prev) => prev.filter((row) => row.id !== id));
+    }
   }
 
   return (
-    <main[% if styling == "tailwind" %] className="max-w-xl mx-auto p-6"[% elif styling == "bootstrap" %] className="container py-4"[% endif %]>
-      <h1[% if styling == "tailwind" %] className="text-2xl font-bold mb-4"[% endif %]>[[ project_name ]]</h1>
-      <form onSubmit={add}[% if styling == "tailwind" %] className="flex gap-2 mb-4"[% endif %]>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="New item"
-[% if styling == "bootstrap" %]
-          className="form-control"
-[% elif styling == "tailwind" %]
-          className="border rounded px-2 py-1 flex-1"
-[% endif %]
-        />
-        <button[% if styling == "bootstrap" %] className="btn btn-primary"[% elif styling == "tailwind" %] className="bg-blue-600 text-white px-3 py-1 rounded"[% endif %]>Add</button>
+    <section>
+      <h2>{entity.name}</h2>
+      <form onSubmit={add}>
+        {entity.fields.map((field) =>
+          field.input === "checkbox" ? (
+            <label key={field.name}>
+              <input
+                type="checkbox"
+                checked={Boolean(form[field.name])}
+                onChange={(e) => setForm({ ...form, [field.name]: e.target.checked })}
+              />{" "}
+              {field.name}
+            </label>
+          ) : (
+            <input
+              key={field.name}
+              type={field.input === "textarea" ? "text" : field.input}
+              placeholder={field.name}
+              value={form[field.name] ?? ""}
+              onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}
+            />
+          ),
+        )}
+        <button>Add</button>
       </form>
-      <ul[% if styling == "bootstrap" %] className="list-group mt-3"[% endif %]>
-        {items.map((it) => (
-          <li key={it.id}[% if styling == "bootstrap" %] className="list-group-item"[% endif %]>{it.name}</li>
+      <ul>
+        {rows.map((row) => (
+          <li key={row.id}>
+            {entity.fields.map((f) => `${f.name}: ${row[f.name]}`).join(", ")} (#{row.id})
+            <button onClick={() => remove(row.id)}>✕</button>
+          </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+export default function App() {
+  return (
+    <main[% if styling == "tailwind" %] className="max-w-2xl mx-auto p-6"[% elif styling == "bootstrap" %] className="container py-4"[% endif %]>
+      <h1[% if styling == "tailwind" %] className="text-2xl font-bold mb-4"[% endif %]>[[ project_name ]]</h1>
+      {ENTITIES.map((entity) => (
+        <EntityPanel key={entity.plural} entity={entity} />
+      ))}
     </main>
   );
 }

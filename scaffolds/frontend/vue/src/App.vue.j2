@@ -1,42 +1,11 @@
 <script setup>
-import { onMounted, ref } from "vue";
-
-const API = [% if has_backend %]"[[ api_base_url ]]/api"[% else %]null[% endif %];
-const items = ref([% if has_backend %][][% else %][{ id: 1, name: "First item" }, { id: 2, name: "Second item" }][% endif %]);
-const name = ref("");
-
-onMounted(async () => {
-  if (API) {
-    items.value = await (await fetch(`${API}/items`)).json();
-  }
-});
-
-async function add() {
-  const value = name.value.trim();
-  if (!value) return;
-  if (API) {
-    const res = await fetch(`${API}/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: value }),
-    });
-    items.value.push(await res.json());
-  } else {
-    items.value.push({ id: items.value.length + 1, name: value });
-  }
-  name.value = "";
-}
+import { ENTITIES } from "./data.js";
+import EntityPanel from "./EntityPanel.vue";
 </script>
 
 <template>
-  <main[% if styling == "tailwind" %] class="max-w-xl mx-auto p-6"[% elif styling == "bootstrap" %] class="container py-4"[% endif %]>
+  <main[% if styling == "tailwind" %] class="max-w-2xl mx-auto p-6"[% elif styling == "bootstrap" %] class="container py-4"[% endif %]>
     <h1[% if styling == "tailwind" %] class="text-2xl font-bold mb-4"[% endif %]>[[ project_name ]]</h1>
-    <form @submit.prevent="add"[% if styling == "tailwind" %] class="flex gap-2 mb-4"[% endif %]>
-      <input v-model="name" placeholder="New item"[% if styling == "bootstrap" %] class="form-control"[% elif styling == "tailwind" %] class="border rounded px-2 py-1 flex-1"[% endif %] />
-      <button[% if styling == "bootstrap" %] class="btn btn-primary"[% elif styling == "tailwind" %] class="bg-blue-600 text-white px-3 py-1 rounded"[% endif %]>Add</button>
-    </form>
-    <ul[% if styling == "bootstrap" %] class="list-group mt-3"[% endif %]>
-      <li v-for="it in items" :key="it.id"[% if styling == "bootstrap" %] class="list-group-item"[% endif %]>{{ it.name }}</li>
-    </ul>
+    <EntityPanel v-for="entity in ENTITIES" :key="entity.plural" :entity="entity" />
   </main>
 </template>

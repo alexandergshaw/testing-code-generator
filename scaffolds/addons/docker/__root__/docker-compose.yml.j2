@@ -1,0 +1,28 @@
+services:
+[% if has_backend %]
+  backend:
+    build: [[ backend_build ]]
+    ports:
+      - "[[ backend_port ]]:[[ backend_port ]]"
+[% if database == "postgres" %]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/app
+    depends_on:
+      - db
+[% endif %]
+[% endif %]
+[% if has_frontend %]
+  frontend:
+    build: [[ frontend_build ]]
+    ports:
+      - "[[ frontend_port ]]:[% if spa %][[ frontend_port ]][% else %]80[% endif %]"
+[% endif %]
+[% if database == "postgres" %]
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+[% endif %]

@@ -1,0 +1,71 @@
+<script setup>
+import { onMounted, reactive, ref } from "vue";
+
+import { API, coerce } from "./data.js";
+
+const props = defineProps({ entity: { type: Object, required: true } });
+
+const rows = ref([]);
+const form = reactive({});
+
+async function refresh() {
+  if (API) {
+    rows.value = await (await fetch(`${API}/${props.entity.plural}`)).json();
+  }
+}
+onMounted(refresh);
+
+async function add() {
+  const payload = {};
+  for (const field of props.entity.fields) {
+    const fallback = field.input === "checkbox" ? false : "";
+    payload[field.name] = coerce(field, form[field.name] ?? fallback);
+  }
+  if (API) {
+    await fetch(`${API}/${props.entity.plural}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await refresh();
+  } else {
+    rows.value.push({ id: rows.value.length + 1, ...payload });
+  }
+  for (const key of Object.keys(form)) delete form[key];
+}
+
+async function remove(id) {
+  if (API) {
+    await fetch(`${API}/${props.entity.plural}/${id}`, { method: "DELETE" });
+    await refresh();
+  } else {
+    rows.value = rows.value.filter((row) => row.id !== id);
+  }
+}
+</script>
+
+<template>
+  <section>
+    <h2>{{ entity.name }}</h2>
+    <form @submit.prevent="add">
+      <template v-for="field in entity.fields" :key="field.name">
+        <label v-if="field.input === 'checkbox'">
+          <input type="checkbox" v-model="form[field.name]" /> {{ field.name }}
+        </label>
+        <input
+          v-else
+          :type="field.input === 'textarea' ? 'text' : field.input"
+          :placeholder="field.name"
+          v-model="form[field.name]"
+        />
+      </template>
+      <button>Add</button>
+    </form>
+    <ul>
+      <li v-for="row in rows" :key="row.id">
+        {{ entity.fields.map((f) => `${f.name}: ${row[f.name]}`).join(", ") }} (#{{ row.id }})
+        <button @click="remove(row.id)">✕</button>
+      </li>
+    </ul>
+  </section>
+</template>

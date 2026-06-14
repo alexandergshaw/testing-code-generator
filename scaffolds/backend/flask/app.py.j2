@@ -2,52 +2,128 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 [% if has_db %]
-from db import SessionLocal, Item, init_db
+from db import SessionLocal, init_db, [[ entities | map(attribute='class_name') | join(", ") ]]
 [% endif %]
 
 app = Flask(__name__)
 CORS(app)
 [% if not has_db %]
-_items = [{"id": 1, "name": "First item"}, {"id": 2, "name": "Second item"}]
+
+# In-memory stores (no database selected).
+[% for entity in entities %]
+_[[ entity.plural ]] = []
+_[[ entity.var ]]_seq = 0
+[% endfor %]
 [% endif %]
+[% if has_db %]
+
+[% for entity in entities %]
+def _dump_[[ entity.var ]](obj):
+    return {"id": obj.id[% for f in entity.fields %], "[[ f.name ]]": obj.[[ f.name ]][% endfor %]}
 
 
+[% endfor %]
+[% endif %]
 @app.get("/api/health")
 def health():
     return jsonify(status="ok")
 
+[% for entity in entities %]
 
-@app.get("/api/items")
-def list_items():
+# ---- [[ entity.class_name ]] ----
+@app.get("[[ entity.route ]]")
+def list_[[ entity.plural ]]():
 [% if has_db %]
     with SessionLocal() as session:
-        items = session.query(Item).order_by(Item.id).all()
-        return jsonify([{"id": i.id, "name": i.name} for i in items])
+        rows = session.query([[ entity.class_name ]]).order_by([[ entity.class_name ]].id).all()
+        return jsonify([_dump_[[ entity.var ]](row) for row in rows])
 [% else %]
-    return jsonify(_items)
+    return jsonify(_[[ entity.plural ]])
 [% endif %]
 
 
-@app.post("/api/items")
-def add_item():
-    name = (request.get_json(silent=True) or {}).get("name", "").strip()
-    if not name:
-        return jsonify(error="name is required"), 400
+@app.post("[[ entity.route ]]")
+def create_[[ entity.var ]]():
+    data = request.get_json(silent=True) or {}
 [% if has_db %]
+    obj = [[ entity.class_name ]]([% for f in entity.fields %][[ f.name ]]=data.get("[[ f.name ]]")[% if not loop.last %], [% endif %][% endfor %])
     with SessionLocal() as session:
-        item = Item(name=name)
-        session.add(item)
+        session.add(obj)
         session.commit()
-        return jsonify(id=item.id, name=item.name), 201
+        return jsonify(_dump_[[ entity.var ]](obj)), 201
 [% else %]
-    new = {"id": len(_items) + 1, "name": name}
-    _items.append(new)
-    return jsonify(new), 201
+    global _[[ entity.var ]]_seq
+    _[[ entity.var ]]_seq += 1
+    obj = {"id": _[[ entity.var ]]_seq[% for f in entity.fields %], "[[ f.name ]]": data.get("[[ f.name ]]")[% endfor %]}
+    _[[ entity.plural ]].append(obj)
+    return jsonify(obj), 201
 [% endif %]
+
+
+@app.get("[[ entity.route ]]/<int:obj_id>")
+def get_[[ entity.var ]](obj_id):
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            return jsonify(error="not found"), 404
+        return jsonify(_dump_[[ entity.var ]](obj))
+[% else %]
+    obj = next((x for x in _[[ entity.plural ]] if x["id"] == obj_id), None)
+    if obj is None:
+        return jsonify(error="not found"), 404
+    return jsonify(obj)
+[% endif %]
+
+
+@app.put("[[ entity.route ]]/<int:obj_id>")
+def update_[[ entity.var ]](obj_id):
+    data = request.get_json(silent=True) or {}
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            return jsonify(error="not found"), 404
+[% for f in entity.fields %]
+        if "[[ f.name ]]" in data:
+            obj.[[ f.name ]] = data["[[ f.name ]]"]
+[% endfor %]
+        session.commit()
+        return jsonify(_dump_[[ entity.var ]](obj))
+[% else %]
+    obj = next((x for x in _[[ entity.plural ]] if x["id"] == obj_id), None)
+    if obj is None:
+        return jsonify(error="not found"), 404
+    for key in ([% for f in entity.fields %]"[[ f.name ]]", [% endfor %]):
+        if key in data:
+            obj[key] = data[key]
+    return jsonify(obj)
+[% endif %]
+
+
+@app.delete("[[ entity.route ]]/<int:obj_id>")
+def delete_[[ entity.var ]](obj_id):
+[% if has_db %]
+    with SessionLocal() as session:
+        obj = session.get([[ entity.class_name ]], obj_id)
+        if obj is None:
+            return jsonify(error="not found"), 404
+        session.delete(obj)
+        session.commit()
+        return "", 204
+[% else %]
+    global _[[ entity.plural ]]
+    before = len(_[[ entity.plural ]])
+    _[[ entity.plural ]] = [x for x in _[[ entity.plural ]] if x["id"] != obj_id]
+    if len(_[[ entity.plural ]]) == before:
+        return jsonify(error="not found"), 404
+    return "", 204
+[% endif %]
+[% endfor %]
 
 
 if __name__ == "__main__":
 [% if has_db %]
     init_db()
 [% endif %]
-    app.run(port=[[ backend_port ]], debug=True)
+    app.run(host="0.0.0.0", port=[[ backend_port ]], debug=True)

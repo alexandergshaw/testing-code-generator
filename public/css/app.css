@@ -135,6 +135,111 @@ legend {
   margin: 0.5rem 0 1rem;
 }
 
+.error.info {
+  color: #34d399;
+}
+
+.hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.hint code {
+  background: var(--card);
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+}
+
+/* Entity editor */
+.entity {
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  background: rgba(148, 163, 184, 0.05);
+}
+
+.entity-head,
+.field-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.entity-name,
+.entity-plural,
+.field-name {
+  padding: 0.4rem 0.6rem;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.entity-name {
+  font-weight: 600;
+}
+
+.field-row {
+  padding-left: 0.5rem;
+}
+
+.field-type {
+  padding: 0.4rem;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.req {
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.actions .primary {
+  width: auto;
+  flex: 1;
+  min-width: 12rem;
+}
+
+.ghost {
+  padding: 0.55rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  border-color: var(--accent);
+}
+
+.ghost.small {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.file-label {
+  display: inline-flex;
+  align-items: center;
+}
+
 .primary {
   width: 100%;
   padding: 0.8rem 1rem;
